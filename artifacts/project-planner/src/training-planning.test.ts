@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
 import { durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles } from './training-planning.ts';
+import { createRecruitmentWorkbook } from './recruitment-export.ts';
 
 const shopId = 'shop-a';
 const roleA: Role = { id: 'role-a', name: 'Технолог', group: 'itr', visible: true };
@@ -88,6 +89,61 @@ test('role reconciliation preserves general training and removes only deleted ro
       { ...events[1], roleIds: [roleB.id] },
     ],
   );
+});
+
+test('deleted role training stays removed after saving and reopening the plan', async () => {
+  const edited = project('sequential');
+  edited.settings.readyDate = '2026-06-20';
+  edited.shops = [{ ...shop, roles: [roleB] }];
+  edited.training = reconcileTrainingRoles(
+    [
+      training('general', 'Общее обучение', 2, [shopId], [], 0),
+      training('both-roles', 'Обучение двух ролей', 3, [shopId], [roleA.id, roleB.id], 1),
+      training('remaining-role', 'Обучение оператора', 4, [shopId], [roleB.id], 2),
+      training('removed-role', 'Обучение технолога', 40, [shopId], [roleA.id], 3),
+    ],
+    edited.shops,
+  );
+
+  // Mirror the API update payload, its JSONB storage round-trip, and the GET response.
+  const updatePayload = {
+    title: edited.title,
+    startDate: edited.startDate,
+    endDate: edited.endDate,
+    shops: edited.shops,
+    phases: edited.phases,
+    milestones: edited.milestones,
+    training: edited.training,
+    settings: edited.settings,
+  };
+  const reopened = JSON.parse(JSON.stringify({
+    id: edited.id,
+    ...updatePayload,
+    updatedAt: edited.updatedAt,
+  })) as Project;
+
+  assert.deepEqual(reopened.shops[0].roles.map(role => role.id), [roleB.id]);
+  assert.deepEqual(
+    reopened.training.map(event => ({ id: event.id, roleIds: event.roleIds })),
+    [
+      { id: 'general', roleIds: [] },
+      { id: 'both-roles', roleIds: [roleB.id] },
+      { id: 'remaining-role', roleIds: [roleB.id] },
+    ],
+  );
+
+  const rolePlan = getRoleTrainingPlan(reopened, shopId, roleB.id, '2026-06-20');
+  assert.deepEqual(rolePlan.events.map(event => event.id), ['general', 'both-roles', 'remaining-role']);
+  assert.equal(rolePlan.totalDays, 9);
+  assert.equal(rolePlan.contractDate, '2026-06-11');
+
+  const workbook = await createRecruitmentWorkbook(reopened);
+  assert.ok(workbook);
+  const byShop = workbook.getWorksheet('По площадкам');
+  assert.ok(byShop);
+  assert.equal(byShop.getRow(5).getCell(4).value, roleB.name);
+  assert.equal(byShop.getRow(5).getCell(2).value, Date.UTC(2026, 5, 11) / 86400000 + 25569);
+  assert.equal(byShop.getRow(5).getCell(7).value, 9);
 });
 
 test('expanded role schedule includes assigned and shop-wide training only, sequentially', () => {
