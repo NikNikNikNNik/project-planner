@@ -223,6 +223,8 @@ components:
         readyDate: { type: ["string", "null"] }
         daysBeforeMc: { type: integer, minimum: 0 }
         readyOffsetUnit: { type: string, enum: [days, weeks, months] }
+        readyMonthsBefore: { type: integer, minimum: 0 }
+        readyMilestone: { type: string, enum: [mc, rfsu] }
         dayType: { type: string, enum: [calendar, working] }
         contractDate: { type: ["string", "null"], format: date }
     Project:

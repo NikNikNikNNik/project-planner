@@ -7,6 +7,7 @@
  */
 import type { ProjectSettingsCalculationMode } from './projectSettingsCalculationMode';
 import type { ProjectSettingsDayType } from './projectSettingsDayType';
+import type { ProjectSettingsReadyMilestone } from './projectSettingsReadyMilestone';
 import type { ProjectSettingsReadyMode } from './projectSettingsReadyMode';
 import type { ProjectSettingsReadyOffsetUnit } from './projectSettingsReadyOffsetUnit';
 
@@ -18,6 +19,9 @@ export interface ProjectSettings {
   /** @minimum 0 */
   daysBeforeMc: number;
   readyOffsetUnit?: ProjectSettingsReadyOffsetUnit;
+  /** @minimum 0 */
+  readyMonthsBefore?: number;
+  readyMilestone?: ProjectSettingsReadyMilestone;
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: Date | null;

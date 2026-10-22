@@ -43,6 +43,14 @@ const shiftWorkingDays = (value: string, days: number) => {
 };
 const uid = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const addMonths = (value: string, months: number) => { const d = new Date(`${value}T12:00:00`); d.setMonth(d.getMonth() + months); return iso(d); };
+const shiftCalendarMonths = (value: string, months: number) => {
+  const source = new Date(`${value}T12:00:00`);
+  const sourceDay = source.getDate();
+  const target = new Date(source.getFullYear(), source.getMonth() + months, 1, 12);
+  const lastTargetDay = new Date(target.getFullYear(), target.getMonth() + 1, 0, 12).getDate();
+  target.setDate(Math.min(sourceDay, lastTargetDay));
+  return iso(target);
+};
 const rawDateDiff = (a: string, b: string) => (new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86400000;
 const dateDiff = (a: string, b: string) => Math.max(1, rawDateDiff(a, b));
 
@@ -142,7 +150,20 @@ function offsetInDays(amount: number, unit: 'days' | 'weeks' | 'months', dayType
   return Math.ceil(amount * factor);
 }
 
-function makeProjectInput(title: string): ProjectInput {
+function calculateStaffReadyDate(settings: Project['settings'], milestones: Project['milestones']) {
+  if (settings.readyMilestone && settings.readyMonthsBefore !== undefined) {
+    const milestoneDate = settings.readyMilestone === 'mc' ? milestones.mc.date : milestones.rfsu.date;
+    return milestoneDate ? shiftCalendarMonths(milestoneDate, -settings.readyMonthsBefore) : null;
+  }
+  if (settings.readyMode === 'fixed') return settings.readyDate;
+  if (!milestones.mc.date) return null;
+  const legacyOffset = offsetInDays(settings.daysBeforeMc, settings.readyOffsetUnit ?? 'days', settings.dayType);
+  return settings.dayType === 'working'
+    ? shiftWorkingDays(milestones.mc.date, -legacyOffset)
+    : shiftDate(milestones.mc.date, -legacyOffset);
+}
+
+function makeProjectInput(title: string, readyMonthsBefore: number, readyMilestone: 'mc' | 'rfsu'): ProjectInput {
   const today = iso(new Date());
   const start = addMonths(today, 1);
   const end = addMonths(today, 24);
@@ -188,7 +209,7 @@ function makeProjectInput(title: string): ProjectInput {
     ],
     milestones: { mc: { date: addMonths(start, 14), note: null, shopIds: shops.map(s => s.id) }, rfsu: { date: addMonths(start, 20), note: null, shopIds: shops.map(s => s.id) } },
     training: [],
-    settings: { calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45, readyOffsetUnit: 'days', dayType: 'calendar', contractDate: null },
+    settings: { calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45, readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, dayType: 'calendar', contractDate: null },
   };
 }
 
@@ -227,6 +248,8 @@ function Planner() {
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null);
   const [editingTraining, setEditingTraining] = useState<TrainingEvent | null>(null);
   const [newTitle, setNewTitle] = useState('');
+  const [newReadyMonths, setNewReadyMonths] = useState('');
+  const [newReadyMilestone, setNewReadyMilestone] = useState<'' | 'mc' | 'rfsu'>('');
   const [timelineStart, setTimelineStart] = useState('');
   const [timelineEnd, setTimelineEnd] = useState('');
   const [expandedShopIds, setExpandedShopIds] = useState<string[]>([]);
@@ -285,8 +308,9 @@ function Planner() {
   const createProject = (e: FormEvent) => {
     e.preventDefault();
     const title = newTitle.trim();
-    if (!title) return;
-    createMutation.mutate({ data: makeProjectInput(title) }, {
+    const readyMonths = Number(newReadyMonths);
+    if (!title || newReadyMonths === '' || !Number.isInteger(readyMonths) || readyMonths < 0 || !newReadyMilestone) return;
+    createMutation.mutate({ data: makeProjectInput(title, readyMonths, newReadyMilestone) }, {
       onSuccess: created => {
         qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
         qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
@@ -349,15 +373,7 @@ function Planner() {
     }
     return items;
   }, [project, timelineStart, timelineEnd]);
-  const staffReadyDate = project
-    ? project.settings.readyMode === 'fixed'
-      ? project.settings.readyDate
-      : project.milestones.mc.date
-        ? (project.settings.dayType === 'working'
-          ? shiftWorkingDays(project.milestones.mc.date, -offsetInDays(project.settings.daysBeforeMc, project.settings.readyOffsetUnit ?? 'days', project.settings.dayType))
-          : shiftDate(project.milestones.mc.date, -offsetInDays(project.settings.daysBeforeMc, project.settings.readyOffsetUnit ?? 'days', project.settings.dayType)))
-        : null
-    : null;
+  const staffReadyDate = project ? calculateStaffReadyDate(project.settings, project.milestones) : null;
   const trainingTimeline = useMemo(
     () => project ? scheduleTrainingTimeline(project, staffReadyDate) : [],
     [project, staffReadyDate],
@@ -383,8 +399,9 @@ function Planner() {
   const warningMessages = project ? [
     ...project.phases.filter(p => p.endDate < p.startDate).map(() => 'У этапа дата окончания раньше даты начала.'),
     ...(project.milestones.mc.date && project.milestones.rfsu.date && project.milestones.mc.date > project.milestones.rfsu.date ? ['MC задана позже RFSU. Проверьте последовательность контрольных дат.'] : []),
-    ...(project.settings.readyMode === 'relative' && !project.milestones.mc.date ? ['Для расчёта даты готовности персонала сначала задайте MC.'] : []),
-    ...(project.settings.readyMode === 'fixed' && project.settings.readyDate && project.milestones.mc.date && project.settings.readyDate > project.milestones.mc.date ? ['Персонал готов позже даты MC.'] : []),
+    ...(project.settings.readyMilestone && project.settings.readyMonthsBefore !== undefined && !(project.settings.readyMilestone === 'mc' ? project.milestones.mc.date : project.milestones.rfsu.date) ? [`Для расчёта готовности персонала задайте дату ${project.settings.readyMilestone.toUpperCase()}.`] : []),
+    ...(!project.settings.readyMilestone && project.settings.readyMode === 'relative' && !project.milestones.mc.date ? ['Для расчёта даты готовности персонала сначала задайте MC.'] : []),
+    ...(!project.settings.readyMilestone && project.settings.readyMode === 'fixed' && project.settings.readyDate && project.milestones.mc.date && project.settings.readyDate > project.milestones.mc.date ? ['Персонал готов позже даты MC.'] : []),
     ...(contractDate && staffReadyDate && contractDate > staffReadyDate ? ['Дата контракта позже даты готовности персонала.'] : []),
     ...(contractShortfall > 0 ? [`До готовности персонала не хватает ${Math.ceil(contractShortfall)} дн. при выбранной дате контракта.`] : []),
   ] : [];
@@ -536,7 +553,7 @@ function Planner() {
             {saveState === 'saving' ? 'Сохранение…' : saveState === 'error' ? 'Не удалось сохранить' : 'Сохранено'}
           </div>
           {project && <button onClick={retrySave} disabled={updateMutation.isPending} className="control inline-flex h-9 items-center gap-1.5 px-2.5 text-xs font-bold text-[#56645e] disabled:opacity-50"><Save size={13} />{saveState === 'error' ? 'Повторить' : 'Сохранить'}</button>}
-          <button data-testid="button-new-project" onClick={() => { setNewTitle(''); setModal('new'); }} className="btn-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold"><Plus size={15} />Новый проект</button>
+          <button data-testid="button-new-project" onClick={() => { setNewTitle(''); setNewReadyMonths(''); setNewReadyMilestone(''); setModal('new'); }} className="btn-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold"><Plus size={15} />Новый проект</button>
         </div>
       </header>
 
@@ -810,6 +827,11 @@ function Planner() {
                     <MilestoneCard code="MC" title="Механическая готовность" date={project.milestones.mc.date} note={project.milestones.mc.note} shops={project.shops} shopIds={project.milestones.mc.shopIds} onChange={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, date } } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, shopIds: project.milestones.mc.shopIds.includes(id) ? project.milestones.mc.shopIds.filter(value => value !== id) : [...project.milestones.mc.shopIds, id] } } })} />
                     <MilestoneCard code="RFSU" title="Готовность к пуску" date={project.milestones.rfsu.date} note={project.milestones.rfsu.note} shops={project.shops} shopIds={project.milestones.rfsu.shopIds} onChange={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, date } } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, shopIds: project.milestones.rfsu.shopIds.includes(id) ? project.milestones.rfsu.shopIds.filter(value => value !== id) : [...project.milestones.rfsu.shopIds, id] } } })} />
                   </div>
+                  <ReadyMilestoneCard
+                    settings={project.settings}
+                    milestones={project.milestones}
+                    onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
+                  />
                 </section>
               </div>
             </>}
@@ -818,7 +840,19 @@ function Planner() {
       </div>
     </main>
 
-    {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)}><form onSubmit={createProject} className="p-6"><label className="mb-2 block text-xs font-bold text-[#5e6866]">Название проекта</label><input autoFocus data-testid="input-new-project-title" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Например, Модернизация установки № 2" className="control h-11 w-full px-3 text-sm" required /><div className="mt-3 rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f7773]">Будут созданы четыре производственные площадки, базовые роли и стартовые этапы. Их можно скорректировать в плане.</div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div></form></Modal>}
+    {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)}><form onSubmit={createProject} className="p-6">
+      <Field label="Название проекта"><input autoFocus data-testid="input-new-project-title" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Например, Модернизация установки № 2" className="control h-11 w-full px-3 text-sm" required /></Field>
+      <div className="mt-4 rounded-md border border-[#e2ddd2] p-3">
+        <h3 className="text-xs font-extrabold text-[#293640]">Готовность персонала «Готов 100%»</h3>
+        <p className="mt-1 text-[10px] text-[#777b78]">Укажите срок и контрольную дату. Оба значения обязательны.</p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <Field label="За (месяцев)"><input data-testid="input-new-ready-months" aria-label="Месяцев до готовности 100%" type="number" min="0" step="1" value={newReadyMonths} onChange={e => setNewReadyMonths(e.target.value)} placeholder="Например, 3" className="control h-10 w-full px-3 text-sm" required /></Field>
+          <Field label="До даты"><select data-testid="select-new-ready-milestone" aria-label="Контрольная дата готовности 100%" value={newReadyMilestone} onChange={e => setNewReadyMilestone(e.target.value as '' | 'mc' | 'rfsu')} className="control h-10 w-full px-2 text-xs" required><option value="">Выберите MC или RFSU</option><option value="mc">MC</option><option value="rfsu">RFSU</option></select></Field>
+        </div>
+      </div>
+      <div className="mt-3 rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f7773]">Будут созданы четыре производственные площадки, базовые роли и стартовые этапы. Их можно скорректировать в плане.</div>
+      <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
+    </form></Modal>}
     {modal === 'phase' && project && <PhaseModal phase={editingPhase} project={project} onClose={() => setModal(null)} onSave={phase => { const phases = editingPhase ? project.phases.map(p => p.id === phase.id ? phase : p) : [...project.phases, phase]; expandTimeline([phase.startDate, phase.endDate]); patch({ phases }); setModal(null); }} onDelete={() => { if (editingPhase && window.confirm('Удалить этот этап из плана?')) { patch({ phases: project.phases.filter(p => p.id !== editingPhase.id) }); setModal(null); } }} />}
     {modal === 'training' && project && <TrainingModal event={editingTraining} project={project} onClose={() => setModal(null)} onSave={event => { const training = editingTraining ? project.training.map(t => t.id === event.id ? event : t) : [...project.training, { ...event, sortOrder: project.training.length }]; patch({ training }); setModal(null); }} onDelete={() => { if (editingTraining && window.confirm('Удалить событие обучения?')) { patch({ training: project.training.filter(t => t.id !== editingTraining.id) }); setModal(null); } }} />}
     {modal === 'roles' && project && <RolesModal
@@ -905,6 +939,59 @@ function Legend({ swatch, diamond, dot, label }: { swatch?: string; diamond?: st
 }
 function MilestoneCard({ code, title, date, note, shops, shopIds, onChange, onNoteChange, onShopToggle }: { code: string; title: string; date: string | null; note: string | null; shops: Project['shops']; shopIds: string[]; onChange: (date: string | null) => void; onNoteChange: (note: string | null) => void; onShopToggle: (id: string) => void }) {
   return <div className="px-4 py-3"><div className="flex items-center gap-2"><span className={`mono rounded px-1.5 py-0.5 text-[9px] font-bold ${code === 'MC' ? 'bg-[#f5e6df] text-[#a8492e]' : 'bg-[#e7eee8] text-[#4e7066]'}`}>{code}</span><span className="text-[10px] font-bold">{title}</span></div><div className="mt-2"><input aria-label={`Дата ${code}`} type="date" value={date ?? ''} onChange={e => onChange(e.target.value || null)} className="control h-8 w-full px-2 text-[10px]" /></div><input aria-label={`Примечание ${code}`} value={note ?? ''} onChange={e => onNoteChange(e.target.value || null)} placeholder="Примечание" className="control mt-2 h-8 w-full px-2 text-[10px]" /><div className="mt-2 flex flex-wrap gap-1">{shops.map(shop => <button type="button" key={shop.id} onClick={() => onShopToggle(shop.id)} className={`rounded px-1.5 py-1 text-[8px] font-bold ${shopIds.includes(shop.id) ? 'bg-[#e9eee8] text-[#527166]' : 'bg-[#f0eee8] text-[#99998e]'}`}>{plantShort[shop.name] ?? shop.name}</button>)}</div></div>;
+}
+function ReadyMilestoneCard({ settings, milestones, onChange }: { settings: Project['settings']; milestones: Project['milestones']; onChange: (settings: Partial<Project['settings']>) => void }) {
+  const [months, setMonths] = useState(settings.readyMonthsBefore === undefined ? '' : String(settings.readyMonthsBefore));
+  useEffect(() => {
+    setMonths(settings.readyMonthsBefore === undefined ? '' : String(settings.readyMonthsBefore));
+  }, [settings.readyMonthsBefore]);
+  const readyDate = calculateStaffReadyDate(settings, milestones);
+  const hasNewRule = settings.readyMonthsBefore !== undefined && !!settings.readyMilestone;
+  return <div className="border-t border-[#eee9df] px-4 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h4 className="text-[10px] font-extrabold text-[#293640]">Готов 100%</h4>
+        <p className="mt-0.5 text-[9px] text-[#85877e]">Дата общей готовности персонала</p>
+      </div>
+      <span data-testid="text-ready-100-date" className="text-[10px] font-bold text-[#315f59]">{fmt(readyDate)}</span>
+    </div>
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-[#777b78]">
+      <span>Готов 100% за</span>
+      <input
+        data-testid="input-ready-100-months"
+        aria-label="Месяцев до готовности 100%"
+        type="number"
+        min="0"
+        step="1"
+        required
+        value={months}
+        onChange={event => {
+          const value = event.target.value;
+          setMonths(value);
+          if (!/^\d+$/.test(value)) return;
+          onChange({ readyMonthsBefore: Number(value) });
+        }}
+        className="control h-8 w-20 px-2 text-center text-xs"
+      />
+      <span>месяцев до</span>
+      <select
+        data-testid="select-ready-100-milestone"
+        aria-label="Контрольная дата готовности 100%"
+        required
+        value={settings.readyMilestone ?? ''}
+        onChange={event => {
+          const value = event.target.value;
+          if (value === 'mc' || value === 'rfsu') onChange({ readyMilestone: value });
+        }}
+        className="control h-8 min-w-24 px-2 text-xs"
+      >
+        <option value="">Выберите дату</option>
+        <option value="mc">MC</option>
+        <option value="rfsu">RFSU</option>
+      </select>
+      {!hasNewRule && <span className="basis-full text-[9px] text-[#a7472e]">Заполните срок и выберите MC или RFSU, чтобы настроить новую формулу.</span>}
+    </div>
+  </div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-1.5 block text-[11px] font-bold text-[#56615f]">{label}</span>{children}</label>;
@@ -1031,13 +1118,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
   const [settings, setSettings] = useState(project.settings);
   const [startDate, setStartDate] = useState(project.startDate);
   const [endDate, setEndDate] = useState(project.endDate);
-  const readyDate = settings.readyMode === 'fixed'
-    ? settings.readyDate
-    : project.milestones.mc.date
-      ? (settings.dayType === 'working'
-        ? shiftWorkingDays(project.milestones.mc.date, -offsetInDays(settings.daysBeforeMc, settings.readyOffsetUnit ?? 'days', settings.dayType))
-        : shiftDate(project.milestones.mc.date, -offsetInDays(settings.daysBeforeMc, settings.readyOffsetUnit ?? 'days', settings.dayType)))
-      : null;
+  const readyDate = calculateStaffReadyDate(settings, project.milestones);
   const plannedDays = totalTrainingDays(project.training, settings.calculationMode, settings.dayType);
   const autoContractDate = readyDate
     ? (settings.dayType === 'working' ? shiftWorkingDays(readyDate, -plannedDays) : shiftDate(readyDate, -plannedDays))
@@ -1051,16 +1132,21 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
       <div className="grid grid-cols-2 gap-3"><Field label="Начало проекта"><input type="date" className="control h-10 w-full px-2 text-xs" value={startDate} onChange={e => setStartDate(e.target.value)} /></Field><Field label="Окончание проекта"><input type="date" className="control h-10 w-full px-2 text-xs" value={endDate} onChange={e => setEndDate(e.target.value)} /></Field></div>
       {invalidRange && <p role="alert" className="text-[10px] font-semibold text-[#a7472e]">Дата окончания не может быть раньше даты начала.</p>}
       <Field label="Расчёт этапов"><select className="control h-10 w-full px-2 text-xs" value={settings.calculationMode} onChange={e => setSettings(s => ({ ...s, calculationMode: e.target.value as typeof s.calculationMode }))}><option value="parallel">Параллельно — независимые этапы могут идти одновременно</option><option value="sequential">Последовательно — этапы следуют друг за другом</option></select></Field>
-      <div className="border-t border-[#e8e3d9] pt-4"><div className="mb-3 text-[10px] font-extrabold uppercase tracking-[.12em] text-[#88897f]">Готовность персонала</div><div className="space-y-3">
-        <label className="flex items-start gap-2 rounded-md border border-[#e2ddd2] p-3"><input type="radio" name="readyMode" checked={settings.readyMode === 'relative'} onChange={() => setSettings(s => ({ ...s, readyMode: 'relative' }))} className="mt-0.5 accent-[#bd4c2b]" /><span className="flex-1"><span className="block text-xs font-bold">Относительно MC</span><span className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[#777b78]">Персонал готов за <input aria-label="Срок до MC" type="number" min="0" className="control h-7 w-16 px-2 text-center" value={settings.daysBeforeMc} onChange={e => setSettings(s => ({ ...s, daysBeforeMc: Number(e.target.value) }))} /><select aria-label="Единица срока до MC" className="control h-7 px-2" value={settings.readyOffsetUnit ?? 'days'} onChange={e => setSettings(s => ({ ...s, readyOffsetUnit: e.target.value as 'days' | 'weeks' | 'months' }))}><option value="days">дней</option><option value="weeks">недель</option><option value="months">месяцев</option></select> до механической готовности</span></span></label>
-        <label className="flex items-start gap-2 rounded-md border border-[#e2ddd2] p-3"><input type="radio" name="readyMode" checked={settings.readyMode === 'fixed'} onChange={() => setSettings(s => ({ ...s, readyMode: 'fixed' }))} className="mt-0.5 accent-[#bd4c2b]" /><span className="flex-1"><span className="block text-xs font-bold">Фиксированная дата</span><input type="date" disabled={settings.readyMode !== 'fixed'} className="control mt-2 h-8 w-full px-2 text-xs disabled:opacity-50" value={settings.readyDate ?? ''} onChange={e => setSettings(s => ({ ...s, readyDate: e.target.value || null }))} /></span></label>
-      </div></div>
+      <div className="border-t border-[#e8e3d9] pt-4">
+        <div className="mb-2 text-[10px] font-extrabold uppercase tracking-[.12em] text-[#88897f]">Готовность персонала</div>
+        <div className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f7773]">
+          {settings.readyMonthsBefore !== undefined && settings.readyMilestone
+            ? `Готов 100% за ${settings.readyMonthsBefore} мес. до ${settings.readyMilestone.toUpperCase()}.`
+            : 'Правило готовности настраивается в блоке «Контрольные даты».'}
+          <p className="mt-1">Расчётная дата: <strong>{fmt(readyDate)}</strong>.</p>
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-3"><Field label="Тип дней"><select className="control h-10 w-full px-2 text-xs" value={settings.dayType} onChange={e => setSettings(s => ({ ...s, dayType: e.target.value as typeof s.dayType }))}><option value="working">Рабочие дни</option><option value="calendar">Календарные дни</option></select></Field><Field label="Ручная дата контракта"><input type="date" className="control h-10 w-full px-2 text-xs" value={settings.contractDate ?? ''} onChange={e => setSettings(s => ({ ...s, contractDate: e.target.value || null }))} /></Field></div>
       <div className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f7773]">
         Автоматическая дата контракта: <strong>{fmt(autoContractDate)}</strong>. Учтено {plannedDays} дн. обучения; режим — {settings.calculationMode === 'sequential' ? 'последовательно' : 'параллельно'}.
         {settings.contractDate && contractGap > 0 && <p className="mt-1 font-bold text-[#a7472e]">Ручная дата позже расчётной на {Math.ceil(contractGap)} дн.</p>}
         {!settings.contractDate && <p className="mt-1">Оставьте ручную дату пустой, чтобы использовать автоматический расчёт.</p>}
-        {settings.readyMode === 'relative' && !project.milestones.mc.date && <p className="mt-1 font-semibold text-[#a7472e]">Для расчёта даты готовности сначала задайте MC.</p>}
+        {settings.readyMilestone && !(settings.readyMilestone === 'mc' ? project.milestones.mc.date : project.milestones.rfsu.date) && <p className="mt-1 font-semibold text-[#a7472e]">Для расчёта даты готовности задайте выбранную контрольную дату {settings.readyMilestone.toUpperCase()}.</p>}
       </div>
       <div className="flex items-start gap-2 rounded-md bg-[#f5efe4] p-3 text-[10px] leading-relaxed text-[#77766c]"><CircleHelp size={14} className="mt-0.5 shrink-0 text-[#a77e44]" />Изменения в правилах расчёта применяются к отображению плана и сохраняются вместе с проектом.</div>
       <div className="flex justify-end gap-2 pt-1"><button onClick={onClose} className="control h-9 px-3 text-xs font-bold">Отмена</button><button disabled={invalidRange} onClick={() => onSave({ startDate, endDate, settings })} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-50">Применить</button></div>

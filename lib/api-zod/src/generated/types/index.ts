@@ -18,6 +18,7 @@ export * from './projectMilestones';
 export * from './projectSettings';
 export * from './projectSettingsCalculationMode';
 export * from './projectSettingsDayType';
+export * from './projectSettingsReadyMilestone';
 export * from './projectSettingsReadyMode';
 export * from './projectSettingsReadyOffsetUnit';
 export * from './projectSummary';

@@ -142,6 +142,14 @@ export const ProjectSettingsReadyOffsetUnit = {
   months: 'months',
 } as const;
 
+export type ProjectSettingsReadyMilestone = typeof ProjectSettingsReadyMilestone[keyof typeof ProjectSettingsReadyMilestone];
+
+
+export const ProjectSettingsReadyMilestone = {
+  mc: 'mc',
+  rfsu: 'rfsu',
+} as const;
+
 export type ProjectSettingsDayType = typeof ProjectSettingsDayType[keyof typeof ProjectSettingsDayType];
 
 
@@ -158,6 +166,9 @@ export interface ProjectSettings {
   /** @minimum 0 */
   daysBeforeMc: number;
   readyOffsetUnit?: ProjectSettingsReadyOffsetUnit;
+  /** @minimum 0 */
+  readyMonthsBefore?: number;
+  readyMilestone?: ProjectSettingsReadyMilestone;
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: string | null;

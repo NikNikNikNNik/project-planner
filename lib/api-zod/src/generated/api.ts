@@ -44,6 +44,8 @@ export const createProjectBodyTrainingItemCostUsdMin = 0;
 
 export const createProjectBodySettingsDaysBeforeMcMin = 0;
 
+export const createProjectBodySettingsReadyMonthsBeforeMin = 0;
+
 
 
 export const CreateProjectBody = zod.object({
@@ -101,6 +103,8 @@ export const CreateProjectBody = zod.object({
   "readyDate": zod.string().nullable(),
   "daysBeforeMc": zod.number().int().min(createProjectBodySettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
+  "readyMonthsBefore": zod.number().int().min(createProjectBodySettingsReadyMonthsBeforeMin).optional(),
+  "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -114,6 +118,8 @@ export const createProjectResponseTrainingItemDurationMin = 0;
 export const createProjectResponseTrainingItemCostUsdMin = 0;
 
 export const createProjectResponseSettingsDaysBeforeMcMin = 0;
+
+export const createProjectResponseSettingsReadyMonthsBeforeMin = 0;
 
 
 
@@ -174,6 +180,8 @@ export const CreateProjectResponse = zod.object({
   "readyDate": zod.string().nullable(),
   "daysBeforeMc": zod.number().int().min(createProjectResponseSettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
+  "readyMonthsBefore": zod.number().int().min(createProjectResponseSettingsReadyMonthsBeforeMin).optional(),
+  "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -195,6 +203,8 @@ export const getProjectResponseTrainingItemDurationMin = 0;
 export const getProjectResponseTrainingItemCostUsdMin = 0;
 
 export const getProjectResponseSettingsDaysBeforeMcMin = 0;
+
+export const getProjectResponseSettingsReadyMonthsBeforeMin = 0;
 
 
 
@@ -255,6 +265,8 @@ export const GetProjectResponse = zod.object({
   "readyDate": zod.string().nullable(),
   "daysBeforeMc": zod.number().int().min(getProjectResponseSettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
+  "readyMonthsBefore": zod.number().int().min(getProjectResponseSettingsReadyMonthsBeforeMin).optional(),
+  "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -276,6 +288,8 @@ export const updateProjectBodyTrainingItemDurationMin = 0;
 export const updateProjectBodyTrainingItemCostUsdMin = 0;
 
 export const updateProjectBodySettingsDaysBeforeMcMin = 0;
+
+export const updateProjectBodySettingsReadyMonthsBeforeMin = 0;
 
 
 
@@ -334,6 +348,8 @@ export const UpdateProjectBody = zod.object({
   "readyDate": zod.string().nullable(),
   "daysBeforeMc": zod.number().int().min(updateProjectBodySettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
+  "readyMonthsBefore": zod.number().int().min(updateProjectBodySettingsReadyMonthsBeforeMin).optional(),
+  "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -347,6 +363,8 @@ export const updateProjectResponseTrainingItemDurationMin = 0;
 export const updateProjectResponseTrainingItemCostUsdMin = 0;
 
 export const updateProjectResponseSettingsDaysBeforeMcMin = 0;
+
+export const updateProjectResponseSettingsReadyMonthsBeforeMin = 0;
 
 
 
@@ -407,6 +425,8 @@ export const UpdateProjectResponse = zod.object({
   "readyDate": zod.string().nullable(),
   "daysBeforeMc": zod.number().int().min(updateProjectResponseSettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
+  "readyMonthsBefore": zod.number().int().min(updateProjectResponseSettingsReadyMonthsBeforeMin).optional(),
+  "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -438,6 +458,8 @@ export const copyProjectResponseTrainingItemDurationMin = 0;
 export const copyProjectResponseTrainingItemCostUsdMin = 0;
 
 export const copyProjectResponseSettingsDaysBeforeMcMin = 0;
+
+export const copyProjectResponseSettingsReadyMonthsBeforeMin = 0;
 
 
 
@@ -498,6 +520,8 @@ export const CopyProjectResponse = zod.object({
   "readyDate": zod.string().nullable(),
   "daysBeforeMc": zod.number().int().min(copyProjectResponseSettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
+  "readyMonthsBefore": zod.number().int().min(copyProjectResponseSettingsReadyMonthsBeforeMin).optional(),
+  "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
