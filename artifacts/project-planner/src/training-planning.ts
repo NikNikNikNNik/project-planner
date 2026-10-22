@@ -21,6 +21,7 @@ export type RoleTrainingPlan = {
   totalDays: number;
   startDate: string | null;
   endDate: string | null;
+  contractDate: string | null;
   readyDate: string | null;
   hasTrainingBar: boolean;
 };
@@ -151,6 +152,10 @@ export function getRoleTrainingPlan(
   const endDate = schedule.length
     ? schedule.reduce((latest, item) => item.endDate > latest ? item.endDate : latest, schedule[0].endDate)
     : null;
+  const approximateContractDate = schedule.some(item => item.approximate);
+  const contractDate = approximateContractDate
+    ? null
+    : startDate ?? readyDate ?? project.settings.contractDate;
 
   return {
     events,
@@ -158,6 +163,7 @@ export function getRoleTrainingPlan(
     totalDays: totalTrainingDays(events, project.settings.calculationMode, project.settings.dayType),
     startDate,
     endDate,
+    contractDate,
     readyDate: endDate ?? readyDate,
     hasTrainingBar: schedule.length > 0 && startDate !== null && endDate !== null,
   };

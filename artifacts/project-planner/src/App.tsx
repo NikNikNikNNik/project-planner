@@ -40,7 +40,7 @@ import { getProjectTimelineEnd, getShopTimelinePhases, REGIME_RAMP_UP_DAYS } fro
 import {
   Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, FileSpreadsheet,
   ChevronDown, ChevronRight, CircleHelp, Copy, Factory, Flag,
-  MoreHorizontal, Pencil, Plus, Save, Settings2, SlidersHorizontal,
+  Pencil, Plus, Save, Settings2, SlidersHorizontal,
   Trash2, Users, ZoomIn, ZoomOut,
 } from 'lucide-react';
 
@@ -378,12 +378,24 @@ function Planner() {
     () => project ? scheduleTrainingTimeline(project, staffReadyDate) : [],
     [project, staffReadyDate],
   );
+  const expandedRoleContractDates = useMemo(() => {
+    if (!project) return [];
+    return project.shops
+      .filter(shop => expandedShopIds.includes(shop.id))
+      .flatMap(shop => shop.roles
+        .filter(role => role.visible)
+        .map(role => getRoleTrainingPlan(project, shop.id, role.id, getShopReadyDate(project, shop.id)).contractDate)
+        .filter((date): date is string => date !== null));
+  }, [project, expandedShopIds]);
   useEffect(() => {
-    if (!project || !trainingTimeline.length) return;
-    const dates = trainingTimeline.flatMap(item => [item.startDate, item.endDate]).sort();
+    if (!project || (!trainingTimeline.length && !expandedRoleContractDates.length)) return;
+    const dates = [
+      ...trainingTimeline.flatMap(item => [item.startDate, item.endDate]),
+      ...expandedRoleContractDates,
+    ].sort();
     setTimelineStart(current => !current || dates[0] < current ? dates[0] : current);
     setTimelineEnd(current => !current || dates[dates.length - 1] > current ? dates[dates.length - 1] : current);
-  }, [project?.id, trainingTimeline]);
+  }, [project?.id, trainingTimeline, expandedRoleContractDates]);
   const plannedTrainingDays = project
     ? totalTrainingDays(project.training, project.settings.calculationMode, project.settings.dayType)
     : 0;
@@ -547,30 +559,31 @@ function Planner() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1600px] px-4 py-5 md:px-8 md:py-7">
-        <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-[1.2fr_1.2fr_1.2fr_1.2fr_1.6fr]">
+      <div className="mx-auto w-full px-3 py-4 sm:px-4 md:px-6 md:py-6 2xl:px-8">
+        <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-[repeat(5,minmax(0,1fr))_minmax(190px,1.25fr)]">
           <SummaryTile label="Проекты в работе" value={summaryQuery.data?.projectCount ?? projects.length} unit="проектов" tone="orange" />
           <SummaryTile label="Контрольные этапы" value={summaryQuery.data?.phaseCount ?? 0} unit="этапов" tone="teal" />
           <SummaryTile label="Программы обучения" value={summaryQuery.data?.trainingCount ?? 0} unit="событий" tone="sand" />
           <SummaryTile label="Идёт сейчас" value={summaryQuery.data?.activeTrainingCount ?? 0} unit="обучений" tone="blue" />
-          <div className="panel col-span-2 flex items-center justify-between rounded-lg px-4 py-3 lg:col-span-1">
-            <div><div className="text-[10px] font-bold uppercase tracking-[.13em] text-[#85877e]">Текущий проект</div><div className="mt-1 text-sm font-bold">{project?.title ?? 'Нет выбранного проекта'}</div></div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#eee9dd] text-[#65716d]"><Factory size={17} /></div>
+          <div className="panel flex min-h-[68px] min-w-0 items-center justify-between gap-2 rounded-lg px-2.5 py-2">
+            <div className="min-w-0"><div className="truncate text-[8px] font-bold uppercase tracking-[.1em] text-[#85877e]">Текущий проект</div><div title={project?.title ?? 'Нет выбранного проекта'} className="mt-1 truncate text-xs font-bold">{project?.title ?? 'Нет выбранного проекта'}</div></div>
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#eee9dd] text-[#65716d]"><Factory size={15} /></div>
           </div>
+          <section className="panel flex min-h-[68px] min-w-0 items-center gap-2 rounded-lg px-2.5 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex items-center justify-between gap-1">
+                <span className="truncate text-[8px] font-bold uppercase tracking-[.1em] text-[#85877e]">Портфель проектов</span>
+                <span className="mono shrink-0 text-[9px] text-[#898a82]">{projects.length}</span>
+              </div>
+              {projects.length ? <select data-testid="select-project-portfolio" aria-label="Выбрать проект из портфеля" value={activeSummary?.id ?? ''} onChange={event => openProject(event.target.value)} className="control h-7 w-full min-w-0 truncate px-2 text-[10px]">
+                {projects.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+              </select> : <button type="button" onClick={openNewProject} className="truncate text-left text-[10px] font-semibold text-[#bd4c2b] hover:underline">Добавить первый проект</button>}
+            </div>
+            <button type="button" aria-label="Добавить проект" title="Добавить проект" onClick={openNewProject} className="btn-quiet flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#bd4c2b]"><Plus size={15} /></button>
+          </section>
         </section>
 
-        <div className="grid items-start gap-5 xl:grid-cols-[286px_minmax(0,1fr)]">
-          <section className="panel overflow-hidden rounded-xl">
-            <div className="flex items-center justify-between border-b border-[#e5e1d7] px-4 py-4">
-              <div><h2 className="display-font text-[17px] font-semibold">Проекты</h2><div className="mt-0.5 text-[11px] text-[#85877e]">Портфель объектов</div></div>
-              <button aria-label="Добавить проект" onClick={() => setModal('new')} className="btn-quiet flex h-8 w-8 items-center justify-center rounded-md text-[#bd4c2b]"><Plus size={17} /></button>
-            </div>
-            <div className="max-h-[calc(100dvh-330px)] min-h-40 overflow-y-auto p-2">
-              {!projects.length ? <div className="px-4 py-8 text-center"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-[#f1e8dd] text-[#bd4c2b]"><Factory size={19} /></div><p className="mt-3 text-sm font-bold">Портфель пока пуст</p><p className="mt-1 text-xs leading-relaxed text-[#80827c]">Создайте первый проект, чтобы начать сводить график и готовность персонала.</p><button onClick={() => setModal('new')} className="mt-4 text-xs font-bold text-[#b84628]">Создать проект <ArrowRight className="ml-1 inline" size={13} /></button></div> :
-        projects.map((item, i) => <ProjectItem key={item.id} project={item} selected={item.id === projectId} index={i} onSelect={() => openProject(item.id)} onCopy={() => copyMutation.mutate({ projectId: item.id }, { onSuccess: copied => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(copied); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); } })} onDelete={() => { if (window.confirm(`Удалить проект «${item.title}»?`)) deleteMutation.mutate({ projectId: item.id }, { onSuccess: () => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); if (projectId === item.id) { initializedId.current = ''; setDraft(null); setActiveId(null); } } }); }} />)}
-            </div>
-            <div className="border-t border-[#e5e1d7] px-4 py-3 text-[10px] text-[#898a82]">Обновлено: {project?.updatedAt ? fmt(project.updatedAt) : '—'}</div>
-          </section>
+        <div className="min-w-0">
 
           <section className="min-w-0">
             {!projects.length ? <div className="panel flex min-h-[450px] flex-col items-center justify-center rounded-xl px-6 text-center"><div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#f0e7db] text-[#bd4c2b]"><Factory size={25} /></div><h2 className="display-font text-2xl">Начните с проекта</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Создайте план строительства — затем синхронизируйте этапы четырёх цехов, контрольные даты и подготовку команд.</p><button className="btn-primary mt-5 rounded-md px-4 py-2.5 text-sm font-bold" onClick={() => setModal('new')}>Создать проект</button></div> :
@@ -680,7 +693,7 @@ function Planner() {
                               const phase = timelinePhase.editablePhase;
                               return <button key={timelinePhase.id} onPointerDown={event => startPhaseDrag(event, phase)} onPointerMove={movePhaseDrag} onPointerUp={() => { phaseDragRef.current = null; }} onPointerCancel={() => { phaseDragRef.current = null; }} onClick={() => { if (phaseMovedRef.current) { phaseMovedRef.current = false; return; } setEditingPhase(phase); setModal('phase'); }} title={title} className="phase-bar absolute flex h-[18px] touch-none items-center overflow-hidden rounded-[4px] px-2 text-left text-[9px] font-bold text-white shadow-sm cursor-grab active:cursor-grabbing" style={style}><span aria-hidden="true" className="absolute left-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /><span className="truncate">{timelinePhase.name}</span><span aria-hidden="true" className="absolute right-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /></button>;
                             })}
-                            {contractDate && <MilestoneLine date={contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" />}
+                            {(!rolesExpanded || !plannedRoles.length) && contractDate && <MilestoneLine date={contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" />}
                             {shopReadyDate && <MilestoneLine date={shopReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов 100%" color="#315f59" />}
                             {mcReady && mcDate && <MilestoneLine date={mcDate} start={timelineStart || project.startDate} totalDays={totalDays} label="MC" color="#bd4c2b" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: withMilestoneShopDate(project.milestones.mc, project.shops.map(item => item.id), shop.id, date) } }); }} />}
                             {rfsuReady && rfsuDate && <MilestoneLine date={rfsuDate} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date, shiftDate(date, REGIME_RAMP_UP_DAYS)]); patch({ milestones: { ...project.milestones, rfsu: withMilestoneShopDate(project.milestones.rfsu, project.shops.map(item => item.id), shop.id, date) } }); }} />}
@@ -698,6 +711,7 @@ function Planner() {
                             </div>
                             <div className="timeline-grid relative h-[42px] min-w-0 flex-1">
                               <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
+                              {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" roleSpecific />}
                               {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {rolePlan.hasTrainingBar && rolePlan.startDate && rolePlan.endDate && <Tooltip.Root delayDuration={220}>
                                 <Tooltip.Trigger asChild>
@@ -881,12 +895,15 @@ function Planner() {
 
 function SummaryTile({ label, value, unit, tone }: { label: string; value: number; unit: string; tone: string }) {
   const colors: Record<string, string> = { orange: 'bg-[#f2e4dc] text-[#a84b30]', teal: 'bg-[#e1eae4] text-[#4d7669]', sand: 'bg-[#f1ead9] text-[#927543]', blue: 'bg-[#e4e9ed] text-[#617584]' };
-  return <div className="panel flex min-h-[78px] items-center justify-between rounded-lg px-3.5 py-3 md:px-4"><div><div className="text-[9px] font-bold uppercase tracking-[.1em] text-[#85877e]">{label}</div><div className="mt-1 flex items-baseline gap-1.5"><span className="mono text-[21px] font-medium leading-none">{value}</span><span className="text-[10px] text-[#898a82]">{unit}</span></div></div><div className={`flex h-8 w-8 items-center justify-center rounded-lg ${colors[tone]}`}><Activity size={15} /></div></div>;
-}
-function ProjectItem({ project, selected, index, onSelect, onCopy, onDelete }: { project: { id: string; title: string; startDate: string; endDate: string; updatedAt: string; phaseCount: number; trainingCount: number }; selected: boolean; index: number; onSelect: () => void; onCopy: () => void; onDelete: () => void }) {
-  const [menu, setMenu] = useState(false);
-  return <div data-testid={`project-row-${project.id}`} onClick={onSelect} className={`group mb-1 cursor-pointer rounded-lg border px-3 py-3 transition-colors ${selected ? 'border-[#d8b5a4] bg-[#f7eee8]' : 'border-transparent hover:bg-[#f4f1e9]'}`}>
-    <div className="flex items-start gap-2"><div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[10px] font-extrabold ${selected ? 'bg-[#bd4c2b] text-white' : 'bg-[#e9e6dc] text-[#65716d]'}`}>{String(index + 1).padStart(2, '0')}</div><div className="min-w-0 flex-1"><div className="truncate text-xs font-extrabold">{project.title}</div><div className="mt-1 text-[9px] text-[#81847c]">{fmt(project.startDate)} — {fmt(project.endDate)}</div><div className="mt-2 flex items-center gap-2 text-[9px] text-[#777b76]"><span>{project.phaseCount} этапов</span><span className="h-1 w-1 rounded-full bg-[#c5c0b4]" /><span>{project.trainingCount} обуч.</span></div></div><div className="relative"><button aria-label="Действия проекта" onClick={e => { e.stopPropagation(); setMenu(v => !v); }} className="btn-quiet flex h-6 w-6 items-center justify-center rounded text-[#8a8b82] opacity-0 group-hover:opacity-100"><MoreHorizontal size={15} /></button>{menu && <div className="absolute right-0 top-7 z-30 w-36 rounded-lg border border-[#ded9ce] bg-[#fbfaf5] p-1 shadow-xl" onClick={e => e.stopPropagation()}><button className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-[10px] hover:bg-[#f0ede5]" onClick={() => { onCopy(); setMenu(false); }}><Copy size={12} />Копировать</button><button className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-[10px] text-[#a7472e] hover:bg-[#f8e9e4]" onClick={() => { onDelete(); setMenu(false); }}><Trash2 size={12} />Удалить</button></div>}</div></div>
+  return <div className="panel flex min-h-[68px] min-w-0 items-center justify-between gap-2 rounded-lg px-2.5 py-2">
+    <div className="min-w-0">
+      <div title={label} className="truncate text-[8px] font-bold uppercase tracking-[.08em] text-[#85877e]">{label}</div>
+      <div className="mt-1 flex min-w-0 items-baseline gap-1">
+        <span className="mono text-[19px] font-medium leading-none">{value}</span>
+        <span className="truncate text-[9px] text-[#898a82]">{unit}</span>
+      </div>
+    </div>
+    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${colors[tone]}`}><Activity size={14} /></div>
   </div>;
 }
 function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
@@ -899,19 +916,22 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
   const x = (rawDateDiff(start, date) / totalDays) * 100;
   if (x < 0 || x > 100) return null;
   const fullLabel = label === 'На контракт'
-    ? 'Персонал взят на контракт'
+    ? roleSpecific ? 'Роль должна быть на контракте' : 'Персонал взят на контракт'
     : label === 'Готов 100%'
       ? 'Весь персонал обучен и готов'
       : label === 'Готов'
         ? 'Профессия обучена и готова'
         : label;
-  const labelPosition = roleSpecific ? 'top-0.5' : label === 'Готов 100%' ? 'top-[20px]' : 'top-0.5';
+  const labelPosition = roleSpecific
+    ? label === 'Готов' ? 'bottom-0.5' : 'top-0.5'
+    : label === 'Готов 100%' ? 'top-[20px]' : 'top-0.5';
+  const markerPosition = roleSpecific && label === 'Готов' ? 'bottom-[7px]' : 'top-[7px]';
   return <div className={`pointer-events-none absolute bottom-0 top-0 ${roleSpecific ? 'z-[4]' : 'z-[2]'}`} style={{ left: `${x}%` }} title={`${fullLabel} · ${fmt(date)}`}>
     <span className="absolute bottom-0 top-0 border-l border-dashed" style={{ borderColor: color }} />
     <button
       type="button"
       aria-label={`Переместить отсечку ${label}`}
-      className="pointer-events-auto absolute -left-[5px] top-[7px] h-[10px] w-[10px] touch-none rotate-45 border-2 bg-[#fbfaf5] cursor-ew-resize"
+      className={`pointer-events-auto absolute -left-[5px] ${markerPosition} h-[10px] w-[10px] touch-none rotate-45 border-2 bg-[#fbfaf5] cursor-ew-resize`}
       style={{ borderColor: color }}
       onPointerDown={event => {
         if (!onMove) return;

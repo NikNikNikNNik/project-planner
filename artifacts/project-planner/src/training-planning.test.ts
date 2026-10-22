@@ -107,8 +107,19 @@ test('expanded role schedule includes assigned and shop-wide training only, sequ
   );
   assert.equal(plan.startDate, '2026-06-15');
   assert.equal(plan.endDate, '2026-06-20');
+  assert.equal(plan.contractDate, '2026-06-15');
   assert.equal(plan.readyDate, '2026-06-20');
   assert.equal(plan.hasTrainingBar, true);
+});
+
+test('each role gets a contract cutoff based on its own training duration', () => {
+  const trainingProject = project('sequential');
+  const shorterPlan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, '2026-06-20');
+  const longerPlan = getRoleTrainingPlan(trainingProject, shopId, roleB.id, '2026-06-20');
+
+  assert.equal(shorterPlan.contractDate, '2026-06-15');
+  assert.equal(longerPlan.contractDate, '2026-06-09');
+  assert.notEqual(shorterPlan.contractDate, longerPlan.contractDate);
 });
 
 test('expanded role schedule shows the longest assigned training in parallel mode', () => {
@@ -129,6 +140,7 @@ test('expanded role schedule shows the longest assigned training in parallel mod
   );
   assert.equal(plan.startDate, '2026-06-17');
   assert.equal(plan.endDate, '2026-06-20');
+  assert.equal(plan.contractDate, '2026-06-17');
   assert.equal(plan.hasTrainingBar, true);
 });
 
@@ -153,6 +165,7 @@ test('sequential role schedule without a ready date uses the contract date or pr
   );
   assert.equal(contractPlan.startDate, '2026-06-10');
   assert.equal(contractPlan.endDate, '2026-06-15');
+  assert.equal(contractPlan.contractDate, '2026-06-10');
 
   const withoutContractDate = getRoleTrainingPlan(project('sequential'), shopId, roleA.id, null);
 
@@ -172,6 +185,7 @@ test('sequential role schedule without a ready date uses the contract date or pr
   );
   assert.equal(withoutContractDate.startDate, '2026-06-01');
   assert.equal(withoutContractDate.endDate, '2026-06-06');
+  assert.equal(withoutContractDate.contractDate, null);
 });
 
 test('parallel role schedule without a ready date uses the contract date or project start', () => {
@@ -195,6 +209,7 @@ test('parallel role schedule without a ready date uses the contract date or proj
   );
   assert.equal(contractPlan.startDate, '2026-06-10');
   assert.equal(contractPlan.endDate, '2026-06-13');
+  assert.equal(contractPlan.contractDate, '2026-06-10');
 
   const withoutContractDate = getRoleTrainingPlan(project('parallel'), shopId, roleA.id, null);
 
@@ -282,6 +297,10 @@ test('a role without training has no dates or colored training bar', () => {
   assert.equal(plan.totalDays, 0);
   assert.equal(plan.startDate, null);
   assert.equal(plan.endDate, null);
+  assert.equal(plan.contractDate, '2026-06-20');
   assert.equal(plan.readyDate, '2026-06-20');
   assert.equal(plan.hasTrainingBar, false);
+
+  const withoutReadyDate = getRoleTrainingPlan(trainingProject, shopId, roleA.id, null);
+  assert.equal(withoutReadyDate.contractDate, null);
 });
