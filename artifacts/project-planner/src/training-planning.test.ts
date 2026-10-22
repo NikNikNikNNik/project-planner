@@ -343,6 +343,37 @@ test('parallel working-day training calculates day and week ranges across weeken
   assert.equal(plan.endDate, '2026-06-15');
 });
 
+for (const calculationMode of ['sequential', 'parallel'] as const) {
+  test(`recruitment export matches the ${calculationMode} working-day role plan`, async () => {
+    const trainingProject = project(calculationMode);
+    trainingProject.settings.dayType = 'working';
+    trainingProject.settings.readyDate = '2026-06-15';
+    trainingProject.training = [
+      training('short', 'Короткое обучение', 2, [shopId], [roleA.id], 0),
+      training('week', 'Обучение на неделю', 1, [shopId], [roleA.id], 1, 'weeks'),
+    ];
+
+    const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, '2026-06-15');
+    const workbook = await createRecruitmentWorkbook(trainingProject);
+    assert.ok(workbook);
+    const byShop = workbook.getWorksheet('По площадкам');
+    assert.ok(byShop);
+    const exportedRole = byShop.getRows(5, byShop.rowCount - 4)
+      ?.find(row => row.getCell(4).value === roleA.name);
+    assert.ok(exportedRole);
+
+    const expectedTotalDays = calculationMode === 'sequential' ? 7 : 5;
+    const expectedDeadline = calculationMode === 'sequential' ? '2026-06-04' : '2026-06-08';
+    const expectedDeadlineSerial = Date.UTC(2026, 5, calculationMode === 'sequential' ? 4 : 8) / 86400000 + 25569;
+
+    assert.deepEqual(plan.schedule.map(item => item.durationDays), [2, 5]);
+    assert.equal(plan.totalDays, expectedTotalDays);
+    assert.equal(plan.contractDate, expectedDeadline);
+    assert.equal(exportedRole.getCell(7).value, plan.totalDays);
+    assert.equal(exportedRole.getCell(2).value, expectedDeadlineSerial);
+  });
+}
+
 test('manual training start date anchors a sequential event and its duration', () => {
   const trainingProject = project('sequential');
   trainingProject.training = [
