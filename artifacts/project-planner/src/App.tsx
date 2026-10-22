@@ -174,9 +174,9 @@ function IconButton({ label, onClick, children, danger = false, testId }: { labe
   return <button type="button" aria-label={label} title={label} data-testid={testId} onClick={e => { e.stopPropagation(); onClick(); }} className={`btn-quiet inline-flex h-8 w-8 items-center justify-center rounded-md ${danger ? 'text-[#a84732] hover:bg-[#f4e6e0]' : 'text-[#6d7475]'}`}>{children}</button>;
 }
 
-function Modal({ title, subtitle, onClose, children, wide = false }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+function Modal({ title, subtitle, onClose, children, wide = false, extraWide = false }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; wide?: boolean; extraWide?: boolean }) {
   return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#17232c]/45 p-4 backdrop-blur-[2px]" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <section className={`fade-in max-h-[calc(100dvh-2rem)] w-full overflow-y-auto ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-xl border border-[#ded9ce] bg-[#fbfaf5] shadow-[0_24px_80px_rgba(23,35,44,.24)]`}>
+    <section className={`fade-in max-h-[calc(100dvh-2rem)] w-full overflow-y-auto ${extraWide ? 'max-w-5xl' : wide ? 'max-w-2xl' : 'max-w-lg'} rounded-xl border border-[#ded9ce] bg-[#fbfaf5] shadow-[0_24px_80px_rgba(23,35,44,.24)]`}>
       <header className="flex items-start justify-between border-b border-[#e5e1d7] px-6 py-5">
         <div><h2 className="display-font text-xl font-semibold text-[#293640]">{title}</h2>{subtitle && <p className="mt-1 text-sm text-[#777b78]">{subtitle}</p>}</div>
         <IconButton label="Закрыть" onClick={onClose}><span className="text-xl leading-none">×</span></IconButton>
@@ -832,27 +832,30 @@ function Planner() {
       </div>
     </main>
 
-    {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)} wide><form onSubmit={createProject} className="space-y-4 p-6">
+    {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)} extraWide><form onSubmit={createProject} className="space-y-4 p-6">
       <Field label="Название проекта"><input autoFocus data-testid="input-new-project-title" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Например, Модернизация установки № 2" className="control h-11 w-full px-3 text-sm" required /></Field>
-      <div className="rounded-md border border-[#e2ddd2] p-3">
-        <h3 className="text-xs font-extrabold text-[#293640]">Готовность персонала «Готов 100%»</h3>
-        <p className="mt-1 text-[10px] text-[#777b78]">Укажите срок, контрольную дату и цеха, для которых считается готовность.</p>
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {defaultShopOptions.map(shop => <label key={shop.id} className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-2 text-[10px] font-semibold ${newReadyShopIds.includes(shop.id) ? 'border-[#91aaa0] bg-[#e9eee8] text-[#416a5d]' : 'border-[#ded9ce] text-[#777b78]'}`}>
-            <input data-testid={`checkbox-new-ready-shop-${shop.id}`} type="checkbox" checked={newReadyShopIds.includes(shop.id)} onChange={() => setNewReadyShopIds(current => current.includes(shop.id) ? current.filter(id => id !== shop.id) : [...current, shop.id])} className="accent-[#557d6e]" />
-            {shop.name}
-          </label>)}
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <Field label="За (месяцев)"><input data-testid="input-new-ready-months" aria-label="Месяцев до готовности 100%" type="number" min="0" step="1" value={newReadyMonths} onChange={e => setNewReadyMonths(e.target.value)} placeholder="Например, 3" className="control h-10 w-full px-3 text-sm" required /></Field>
-          <Field label="До даты"><select data-testid="select-new-ready-milestone" aria-label="Контрольная дата готовности 100%" value={newReadyMilestone} onChange={e => setNewReadyMilestone(e.target.value as '' | 'mc' | 'rfsu')} className="control h-10 w-full px-2 text-xs" required><option value="">Выберите MC или RFSU</option><option value="mc">MC</option><option value="rfsu">RFSU</option></select></Field>
-        </div>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <section className="min-w-0 rounded-md border border-[#e2ddd2] p-3">
+          <div className="flex items-center gap-2"><span className="mono rounded bg-[#e7eee8] px-1.5 py-0.5 text-[9px] font-bold text-[#4e7066]">100%</span><h3 className="text-[10px] font-extrabold">Готовность персонала</h3></div>
+          <p className="mt-2 text-[9px] text-[#85877e]">Срок и охват правила готовности.</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Field label="За (месяцев)"><input data-testid="input-new-ready-months" aria-label="Месяцев до готовности 100%" type="number" min="0" step="1" value={newReadyMonths} onChange={e => setNewReadyMonths(e.target.value)} placeholder="Например, 3" className="control h-9 w-full px-2 text-xs" required /></Field>
+            <Field label="До даты"><select data-testid="select-new-ready-milestone" aria-label="Контрольная дата готовности 100%" value={newReadyMilestone} onChange={e => setNewReadyMilestone(e.target.value as '' | 'mc' | 'rfsu')} className="control h-9 w-full px-2 text-xs" required><option value="">Выберите дату</option><option value="mc">MC</option><option value="rfsu">RFSU</option></select></Field>
+          </div>
+          <div className="mt-3">
+            <p className="mb-1.5 text-[9px] font-bold text-[#777b78]">Правило применяется к:</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {defaultShopOptions.map(shop => <label key={shop.id} className={`flex min-w-0 cursor-pointer items-center gap-1.5 rounded border px-1.5 py-1.5 text-[9px] font-semibold ${newReadyShopIds.includes(shop.id) ? 'border-[#91aaa0] bg-[#e9eee8] text-[#416a5d]' : 'border-[#ded9ce] text-[#777b78]'}`}>
+                <input data-testid={`checkbox-new-ready-shop-${shop.id}`} type="checkbox" checked={newReadyShopIds.includes(shop.id)} onChange={() => setNewReadyShopIds(current => current.includes(shop.id) ? current.filter(id => id !== shop.id) : [...current, shop.id])} className="accent-[#557d6e]" />
+                {shop.name}
+              </label>)}
+            </div>
+          </div>
+        </section>
         <ShopMilestoneDateFields code="MC" title="Механическая готовность" allDate={newMcAllDate} dates={newMcDates} onAllDateChange={date => setAllNewMilestoneDates('mc', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('mc', shopId, date)} />
         <ShopMilestoneDateFields code="RFSU" title="Готовность к пуску" allDate={newRfsuAllDate} dates={newRfsuDates} onAllDateChange={date => setAllNewMilestoneDates('rfsu', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('rfsu', shopId, date)} />
       </div>
-      <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Задайте общую дату для всех цехов или укажите отдельные даты ниже. Будут созданы четыре площадки, базовые роли и стартовые этапы.</div>
+      <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Для MC и RFSU задайте общую дату или отдельные даты по цехам. Будут созданы четыре площадки, базовые роли и стартовые этапы.</div>
       <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !newReadyMonths || !newReadyMilestone || !newReadyShopIds.length} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
     </form></Modal>}
     {modal === 'phase' && project && <PhaseModal phase={editingPhase} project={project} onClose={() => setModal(null)} onSave={phase => { const phases = editingPhase ? project.phases.map(p => p.id === phase.id ? phase : p) : [...project.phases, phase]; expandTimeline([phase.startDate, phase.endDate]); patch({ phases }); setModal(null); }} onDelete={() => { if (editingPhase && window.confirm('Удалить этот этап из плана?')) { patch({ phases: project.phases.filter(p => p.id !== editingPhase.id) }); setModal(null); } }} />}
