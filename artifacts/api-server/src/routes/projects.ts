@@ -82,37 +82,25 @@ function rejectInvalidTrainingRoleReferences(
 }
 
 router.get("/projects", async (req, res): Promise<void> => {
-  const rows = await db.select().from(projectsTable);
+  const rows = await db.select().from(projectsTable).orderBy(desc(projectsTable.updatedAt));
   res.json(ListProjectsResponse.parse(rows.map(projectSummaryFromRow)));
 });
 
 router.post("/projects", async (req, res): Promise<void> => {
-  const parsed = UpdateProjectBody.safeParse(req.body);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
+  const parsed = CreateProjectBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  if (!requestHasProjectAccess(req, params.data.projectId)) {
-    res.status(401).json({ error: "Требуется вход в проект" });
-    return;
-  }
-
   const input = parsed.data;
-  if (invalidRoleReferences.length > 0) {
-    res.status(400).json({ error: `Обучения назначены удалённым ролям: ${invalidRoleReferences.join(", ")}` });
-    return;
-  }
+  if (rejectInvalidTrainingRoleReferences(input, res)) return;
   const access = input.access;
   if (!access) {
     res.status(400).json({ error: "Для проекта необходимо задать логин и пароль" });
     return;
   }
   const id = crypto.randomUUID();
-  const passwordRecord = await makePasswordRecord(parsedCredentials.data.password);
+  const passwordRecord = await makePasswordRecord(access.password);
   const row = await db.transaction(async (tx) => {
     const [created] = await tx
       .insert(projectsTable)
@@ -137,8 +125,8 @@ router.post("/projects", async (req, res): Promise<void> => {
 });
 
 router.post("/projects/:projectId/access", async (req, res): Promise<void> => {
-  const params = CopyProjectParams.safeParse(req.params);
-  const parsedCredentials = CopyProjectBody.safeParse(req.body);
+  const params = GetProjectParams.safeParse(req.params);
+  const parsedCredentials = AuthenticateProjectBody.safeParse(req.body);
   if (!params.success || !parsedCredentials.success) {
     res.status(400).json({ error: "Проверьте логин и пароль" });
     return;
@@ -165,7 +153,7 @@ router.post("/projects/:projectId/access", async (req, res): Promise<void> => {
     .where(eq(projectCredentialsTable.projectId, projectId));
 
   if (!savedCredentials) {
-  const passwordRecord = await makePasswordRecord(parsedCredentials.data.password);
+    const passwordRecord = await makePasswordRecord(credentials.password);
     const [claimed] = await db
       .insert(projectCredentialsTable)
       .values({
@@ -214,7 +202,7 @@ router.post("/project-access/logout", (_req, res): void => {
 });
 
 router.get("/projects/:projectId", async (req, res): Promise<void> => {
-  const params = CopyProjectParams.safeParse(req.params);
+  const params = GetProjectParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
@@ -224,18 +212,18 @@ router.get("/projects/:projectId", async (req, res): Promise<void> => {
     return;
   }
   const [row] = await db
-    .delete(projectsTable)
-    .where(eq(projectsTable.id, params.data.projectId))
-    .returning({ id: projectsTable.id });
+    .select()
+    .from(projectsTable)
+    .where(eq(projectsTable.id, params.data.projectId));
   if (!row) {
     res.status(404).json({ error: "Проект не найден" });
     return;
   }
-  res.sendStatus(204);
+  res.json(GetProjectResponse.parse(projectFromRow(row)));
 });
 
-router.post("/projects/:projectId/copy", async (req, res): Promise<void> => {
-  const params = CopyProjectParams.safeParse(req.params);
+router.put("/projects/:projectId", async (req, res): Promise<void> => {
+  const params = UpdateProjectParams.safeParse(req.params);
   const parsed = UpdateProjectBody.safeParse(req.body);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -251,23 +239,27 @@ router.post("/projects/:projectId/copy", async (req, res): Promise<void> => {
   }
 
   const input = parsed.data;
-  if (invalidRoleReferences.length > 0) {
-    res.status(400).json({ error: `Обучения назначены удалённым ролям: ${invalidRoleReferences.join(", ")}` });
-    return;
-  }
+  if (rejectInvalidTrainingRoleReferences(input, res)) return;
   const [row] = await db
-    .delete(projectsTable)
+    .update(projectsTable)
+    .set({
+      title: input.title,
+      startDate: toDateString(input.startDate),
+      endDate: toDateString(input.endDate),
+      plan: projectPlanForStorage(input) as unknown as typeof projectsTable.$inferInsert.plan,
+      updatedAt: new Date(),
+    })
     .where(eq(projectsTable.id, params.data.projectId))
-    .returning({ id: projectsTable.id });
+    .returning();
   if (!row) {
     res.status(404).json({ error: "Проект не найден" });
     return;
   }
-  res.sendStatus(204);
+  res.json(UpdateProjectResponse.parse(projectFromRow(row)));
 });
 
-router.post("/projects/:projectId/copy", async (req, res): Promise<void> => {
-  const params = CopyProjectParams.safeParse(req.params);
+router.delete("/projects/:projectId", async (req, res): Promise<void> => {
+  const params = DeleteProjectParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
