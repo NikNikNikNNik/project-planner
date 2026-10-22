@@ -937,7 +937,7 @@ function Planner() {
                               const phase = timelinePhase.editablePhase;
                               return <button key={timelinePhase.id} onPointerDown={event => startPhaseDrag(event, phase)} onPointerMove={movePhaseDrag} onPointerUp={() => { phaseDragRef.current = null; }} onPointerCancel={() => { phaseDragRef.current = null; }} onClick={() => { if (phaseMovedRef.current) { phaseMovedRef.current = false; return; } setEditingPhase(phase); setModal('phase'); }} title={title} className="phase-bar absolute flex h-[18px] touch-none items-center overflow-hidden rounded-[4px] px-2 text-left text-[9px] font-bold text-white shadow-sm cursor-grab active:cursor-grabbing" style={style}><span aria-hidden="true" className="absolute left-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /><span className="truncate">{timelinePhase.name}</span><span aria-hidden="true" className="absolute right-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /></button>;
                             })}
-                            {(!rolesExpanded || !plannedRoles.length) && contractDate && <MilestoneLine date={contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" />}
+                            {(!rolesExpanded || !plannedRoles.length) && contractDate && <MilestoneLine date={contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Контракт" color="#8060a8" labelOrientation="vertical" />}
                             {shopReadyDate && <MilestoneLine date={shopReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов 100%" color="#315f59" />}
                             {mcReady && mcDate && <MilestoneLine date={mcDate} start={timelineStart || project.startDate} totalDays={totalDays} label="MC" color="#bd4c2b" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: withMilestoneShopDate(project.milestones.mc, project.shops.map(item => item.id), shop.id, date) } }); }} />}
                             {rfsuReady && rfsuDate && <MilestoneLine date={rfsuDate} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date, shiftDate(date, REGIME_RAMP_UP_DAYS)]); patch({ milestones: { ...project.milestones, rfsu: withMilestoneShopDate(project.milestones.rfsu, project.shops.map(item => item.id), shop.id, date) } }); }} />}
@@ -996,7 +996,7 @@ function Planner() {
                                 </Tooltip.Portal>
                               </Tooltip.Root>}
                               {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Рекрутинг" color="#b77a3e" roleSpecific labelSide="right" labelPlacement={recruitmentLabelOverlapsContract ? 'bottom-0.5' : undefined} />}
-                              {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" roleSpecific />}
+                              {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Контракт" color="#8060a8" roleSpecific labelOrientation="vertical" />}
                               {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {trainingLanes.map(item => <Tooltip.Root key={item.event.id} delayDuration={220}>
                                 <Tooltip.Trigger asChild>
@@ -1340,12 +1340,12 @@ function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
   const x = (rawDateDiff(start, now) / totalDays) * 100;
   return x >= 0 && x <= 100 ? <div className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55" style={{ left: `${x}%` }}><span className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" /></div> : null;
 }
-function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right' }) {
+function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide, labelOrientation }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right'; labelOrientation?: 'vertical' }) {
   const pointerDown = useRef(false);
   const x = (rawDateDiff(start, date) / totalDays) * 100;
   if (x < 0 || x > 100) return null;
-  const fullLabel = label === 'На контракт'
-    ? roleSpecific ? 'Роль должна быть на контракте' : 'Персонал взят на контракт'
+  const fullLabel = label === 'Контракт'
+    ? roleSpecific ? 'Дата контракта для роли' : 'Дата контракта'
     : label === 'Готов 100%'
       ? 'Весь персонал обучен и готов'
       : label === 'Готов'
@@ -1381,7 +1381,7 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
       onPointerUp={() => { pointerDown.current = false; }}
       onPointerCancel={() => { pointerDown.current = false; }}
     />
-    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`} style={{ background: color }}>{label}</span>
+    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelOrientation === 'vertical' ? 'left-5 top-0.5 origin-top-left rotate-90' : `${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`}`} style={{ background: color }}>{label}</span>
     <span className="sr-only">{fullLabel}: {fmt(date)}</span>
   </div>;
 }
