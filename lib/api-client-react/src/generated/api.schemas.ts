@@ -63,12 +63,15 @@ export interface Phase {
   note: string | null;
 }
 
+export type MilestoneShopDates = {[key: string]: string | null};
+
 export interface Milestone {
   /** @nullable */
   date: string | null;
   /** @nullable */
   note: string | null;
   shopIds: string[];
+  shopDates?: MilestoneShopDates;
 }
 
 export type TrainingEventCategory = typeof TrainingEventCategory[keyof typeof TrainingEventCategory];
@@ -169,6 +172,7 @@ export interface ProjectSettings {
   /** @minimum 0 */
   readyMonthsBefore?: number;
   readyMilestone?: ProjectSettingsReadyMilestone;
+  readyShopIds?: string[];
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: string | null;

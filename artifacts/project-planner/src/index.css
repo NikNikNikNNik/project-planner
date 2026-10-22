@@ -102,15 +102,6 @@
 }
 
 .app-shell { min-height: 100dvh; background: #f5f2e9; }
-.sidebar {
-  background: #25313b;
-  color: #f2eee4;
-  box-shadow: 8px 0 24px rgba(30, 40, 47, .08);
-}
-.sidebar-grid {
-  background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
-  background-size: 26px 26px;
-}
 .display-font { font-family: var(--app-font-serif); }
 .mono { font-family: var(--app-font-mono); }
 .panel {
@@ -144,11 +135,4 @@
 .grain::after {
   content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 50; opacity: .13;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.1'/%3E%3C/svg%3E");
-}
-@media (max-width: 900px) {
-  .sidebar { width: 68px !important; padding-inline: 10px !important; }
-  .sidebar-label, .sidebar-copy { display: none !important; }
-}
-@media (max-width: 767px) {
-  .sidebar { display: none !important; }
 }

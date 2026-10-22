@@ -8,6 +8,7 @@
 
 export * from './healthStatus';
 export * from './milestone';
+export * from './milestoneShopDates';
 export * from './phase';
 export * from './phaseType';
 export * from './planningSummary';

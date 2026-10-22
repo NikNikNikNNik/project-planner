@@ -1,5 +1,6 @@
 import type ExcelJS from 'exceljs';
 import type { Project, Role, TrainingEvent } from '@workspace/api-client-react';
+import { getProjectReadyDate, getShopReadyDate } from './readiness';
 
 type RecruitmentRow = {
   deadline: string | null;
@@ -56,10 +57,12 @@ function getRoleTrainingDays(project: Project, role: Role, shopId: string) {
   return totalTrainingDays(events, project.settings.calculationMode, project.settings.dayType);
 }
 
-function buildRows(project: Project, readyDate: string | null): RecruitmentRow[] {
-  return project.shops.flatMap(shop => shop.roles
-    .filter(role => role.visible && (role.headcount ?? 1) > 0)
-    .map(role => {
+function buildRows(project: Project): RecruitmentRow[] {
+  return project.shops.flatMap(shop => {
+    const readyDate = getShopReadyDate(project, shop.id);
+    return shop.roles
+      .filter(role => role.visible && (role.headcount ?? 1) > 0)
+      .map(role => {
       const days = getRoleTrainingDays(project, role, shop.id);
       const deadline = project.settings.contractDate ?? (readyDate
         ? project.settings.dayType === 'working'
@@ -75,7 +78,8 @@ function buildRows(project: Project, readyDate: string | null): RecruitmentRow[]
         headcount: role.headcount ?? 1,
         trainingDays: days,
       };
-    }));
+      });
+  });
 }
 
 function excelDateSerial(value: string | null) {
@@ -84,8 +88,9 @@ function excelDateSerial(value: string | null) {
   return Date.UTC(year, month - 1, day) / 86400000 + 25569;
 }
 
-export async function createRecruitmentWorkbook(project: Project, readyDate: string | null) {
-  const recruitmentRows = buildRows(project, readyDate);
+export async function createRecruitmentWorkbook(project: Project) {
+  const readyDate = getProjectReadyDate(project);
+  const recruitmentRows = buildRows(project);
   if (!recruitmentRows.length) return null;
   const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
@@ -174,8 +179,8 @@ export async function createRecruitmentWorkbook(project: Project, readyDate: str
   return workbook;
 }
 
-export async function downloadRecruitmentWorkbook(project: Project, readyDate: string | null) {
-  const workbook = await createRecruitmentWorkbook(project, readyDate);
+export async function downloadRecruitmentWorkbook(project: Project) {
+  const workbook = await createRecruitmentWorkbook(project);
   if (!workbook) {
     window.alert('Нет ролей с численностью больше нуля, включённых в план.');
     return;

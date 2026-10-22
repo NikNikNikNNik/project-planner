@@ -22,6 +22,7 @@ export interface ProjectSettings {
   /** @minimum 0 */
   readyMonthsBefore?: number;
   readyMilestone?: ProjectSettingsReadyMilestone;
+  readyShopIds?: string[];
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: Date | null;

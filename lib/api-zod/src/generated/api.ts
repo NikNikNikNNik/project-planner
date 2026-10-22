@@ -76,12 +76,14 @@ export const CreateProjectBody = zod.object({
   "mc": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 }),
   "rfsu": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 })
 }),
   "training": zod.array(zod.object({
@@ -105,6 +107,7 @@ export const CreateProjectBody = zod.object({
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
   "readyMonthsBefore": zod.number().int().min(createProjectBodySettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
+  "readyShopIds": zod.array(zod.string()).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -153,12 +156,14 @@ export const CreateProjectResponse = zod.object({
   "mc": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 }),
   "rfsu": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 })
 }),
   "training": zod.array(zod.object({
@@ -182,6 +187,7 @@ export const CreateProjectResponse = zod.object({
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
   "readyMonthsBefore": zod.number().int().min(createProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
+  "readyShopIds": zod.array(zod.string()).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -238,12 +244,14 @@ export const GetProjectResponse = zod.object({
   "mc": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 }),
   "rfsu": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 })
 }),
   "training": zod.array(zod.object({
@@ -267,6 +275,7 @@ export const GetProjectResponse = zod.object({
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
   "readyMonthsBefore": zod.number().int().min(getProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
+  "readyShopIds": zod.array(zod.string()).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -321,12 +330,14 @@ export const UpdateProjectBody = zod.object({
   "mc": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 }),
   "rfsu": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 })
 }),
   "training": zod.array(zod.object({
@@ -350,6 +361,7 @@ export const UpdateProjectBody = zod.object({
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
   "readyMonthsBefore": zod.number().int().min(updateProjectBodySettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
+  "readyShopIds": zod.array(zod.string()).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -398,12 +410,14 @@ export const UpdateProjectResponse = zod.object({
   "mc": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 }),
   "rfsu": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 })
 }),
   "training": zod.array(zod.object({
@@ -427,6 +441,7 @@ export const UpdateProjectResponse = zod.object({
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
   "readyMonthsBefore": zod.number().int().min(updateProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
+  "readyShopIds": zod.array(zod.string()).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -493,12 +508,14 @@ export const CopyProjectResponse = zod.object({
   "mc": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 }),
   "rfsu": zod.object({
   "date": zod.string().nullable(),
   "note": zod.string().nullable(),
-  "shopIds": zod.array(zod.string())
+  "shopIds": zod.array(zod.string()),
+  "shopDates": zod.record(zod.string(), zod.string().nullable()).optional()
 })
 }),
   "training": zod.array(zod.object({
@@ -522,6 +539,7 @@ export const CopyProjectResponse = zod.object({
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
   "readyMonthsBefore": zod.number().int().min(copyProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
+  "readyShopIds": zod.array(zod.string()).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })

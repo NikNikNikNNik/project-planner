@@ -27,9 +27,19 @@ import {
   trainingDays,
 } from './training-planning';
 import {
+  commonMilestoneDate,
+  getMilestoneDateForShop,
+  getProjectReadyDate,
+  getShopReadyDate,
+  isMilestoneApplicableToShop,
+  shiftCalendarMonths,
+  withMilestoneShopDate,
+} from './readiness';
+import { getProjectTimelineEnd, getShopTimelinePhases, REGIME_RAMP_UP_DAYS } from './timeline-phases';
+import {
   Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, FileSpreadsheet,
-  ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Factory, Flag,
-  Layers3, MoreHorizontal, Pencil, Plus, Save, Settings2, ShieldCheck, SlidersHorizontal,
+  ChevronDown, ChevronRight, CircleHelp, Copy, Factory, Flag,
+  MoreHorizontal, Pencil, Plus, Save, Settings2, SlidersHorizontal,
   Trash2, Users, ZoomIn, ZoomOut,
 } from 'lucide-react';
 
@@ -49,15 +59,7 @@ const shiftWorkingDays = (value: string, days: number) => {
   return iso(d);
 };
 const uid = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-const addMonths = (value: string, months: number) => { const d = new Date(`${value}T12:00:00`); d.setMonth(d.getMonth() + months); return iso(d); };
-const shiftCalendarMonths = (value: string, months: number) => {
-  const source = new Date(`${value}T12:00:00`);
-  const sourceDay = source.getDate();
-  const target = new Date(source.getFullYear(), source.getMonth() + months, 1, 12);
-  const lastTargetDay = new Date(target.getFullYear(), target.getMonth() + 1, 0, 12).getDate();
-  target.setDate(Math.min(sourceDay, lastTargetDay));
-  return iso(target);
-};
+const addMonths = shiftCalendarMonths;
 const rawDateDiff = (a: string, b: string) => (new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86400000;
 const dateDiff = (a: string, b: string) => Math.max(1, rawDateDiff(a, b));
 
@@ -83,29 +85,36 @@ const categoryNames: Record<string, string> = {
 const statusNames: Record<string, string> = { planned: 'Запланировано', in_progress: 'В процессе', completed: 'Завершено' };
 const plantShort: Record<string, string> = { 'Пиролиз': 'ПИР', 'Бутен1': 'БУТ', 'Полимеризация': 'ПОЛ', 'ОЗХ': 'ОЗХ' };
 const trainingCategories: TrainingEvent['category'][] = ['mandatory', 'technology', 'internship', 'lvcc', 'other'];
+const defaultShopOptions = [
+  { id: 'shop-1', name: 'Пиролиз' },
+  { id: 'shop-2', name: 'Бутен1' },
+  { id: 'shop-3', name: 'Полимеризация' },
+  { id: 'shop-4', name: 'ОЗХ' },
+] as const;
 
-function offsetInDays(amount: number, unit: 'days' | 'weeks' | 'months', dayType: 'calendar' | 'working') {
-  const factor = unit === 'days' ? 1 : unit === 'weeks' ? (dayType === 'working' ? 5 : 7) : (dayType === 'working' ? 22 : 30);
-  return Math.ceil(amount * factor);
+function defaultMilestoneDates() {
+  const start = addMonths(iso(new Date()), 1);
+  return { mc: addMonths(start, 14), rfsu: addMonths(start, 20) };
 }
 
-function calculateStaffReadyDate(settings: Project['settings'], milestones: Project['milestones']) {
-  if (settings.readyMilestone && settings.readyMonthsBefore !== undefined) {
-    const milestoneDate = settings.readyMilestone === 'mc' ? milestones.mc.date : milestones.rfsu.date;
-    return milestoneDate ? shiftCalendarMonths(milestoneDate, -settings.readyMonthsBefore) : null;
-  }
-  if (settings.readyMode === 'fixed') return settings.readyDate;
-  if (!milestones.mc.date) return null;
-  const legacyOffset = offsetInDays(settings.daysBeforeMc, settings.readyOffsetUnit ?? 'days', settings.dayType);
-  return settings.dayType === 'working'
-    ? shiftWorkingDays(milestones.mc.date, -legacyOffset)
-    : shiftDate(milestones.mc.date, -legacyOffset);
-}
-
-function makeProjectInput(title: string, readyMonthsBefore: number, readyMilestone: 'mc' | 'rfsu'): ProjectInput {
+function makeProjectInput(
+  title: string,
+  readyMonthsBefore: number,
+  readyMilestone: 'mc' | 'rfsu',
+  readyShopIds: string[],
+  mcDates: Record<string, string | null>,
+  rfsuDates: Record<string, string | null>,
+): ProjectInput {
   const today = iso(new Date());
   const start = addMonths(today, 1);
-  const end = addMonths(today, 24);
+  const defaultEnd = addMonths(today, 24);
+  const milestonesDates = [...Object.values(mcDates), ...Object.values(rfsuDates)].filter((date): date is string => !!date);
+  const timelineDates = [
+    ...milestonesDates,
+    ...Object.values(rfsuDates).filter((date): date is string => !!date).map(date => shiftDate(date, REGIME_RAMP_UP_DAYS)),
+  ];
+  const projectStart = milestonesDates.reduce((earliest, date) => date < earliest ? date : earliest, start);
+  const end = timelineDates.reduce((latest, date) => date > latest ? date : latest, defaultEnd);
   const templates: { name: string; itr: string[]; workers: string[] }[] = [
     {
       name: 'Пиролиз',
@@ -129,7 +138,7 @@ function makeProjectInput(title: string, readyMonthsBefore: number, readyMilesto
     },
   ];
   const shops = templates.map((template, i) => {
-    const id = `shop-${i + 1}`;
+    const id = defaultShopOptions[i].id;
     return {
       id,
       name: template.name,
@@ -139,16 +148,24 @@ function makeProjectInput(title: string, readyMonthsBefore: number, readyMilesto
       ],
     };
   });
+  const shopIds = shops.map(shop => shop.id);
+  const sharedDate = (dates: Record<string, string | null>) => {
+    const values = shopIds.map(id => dates[id] ?? null);
+    return values.every(date => date === values[0]) ? values[0] ?? null : null;
+  };
   return {
-    title, startDate: start, endDate: end, shops,
+    title, startDate: projectStart, endDate: end, shops,
     phases: [
       { id: uid(), name: 'Подготовка площадки', type: 'construction', startDate: start, endDate: addMonths(start, 7), shopIds: shops.map(s => s.id), note: null },
-      { id: uid(), name: 'Монтаж оборудования', type: 'construction', startDate: addMonths(start, 5), endDate: addMonths(start, 14), shopIds: shops.slice(0, 3).map(s => s.id), note: null },
-      { id: uid(), name: 'ПНР и комплексное опробование', type: 'commissioning', startDate: addMonths(start, 15), endDate: addMonths(start, 20), shopIds: shops.map(s => s.id), note: null },
+      { id: uid(), name: 'СМР и ППНР', type: 'construction', startDate: addMonths(start, 5), endDate: addMonths(start, 14), shopIds: shops.slice(0, 3).map(s => s.id), note: null },
+      { id: uid(), name: 'ПНР', type: 'commissioning', startDate: addMonths(start, 15), endDate: addMonths(start, 20), shopIds: shops.map(s => s.id), note: null },
     ],
-    milestones: { mc: { date: addMonths(start, 14), note: null, shopIds: shops.map(s => s.id) }, rfsu: { date: addMonths(start, 20), note: null, shopIds: shops.map(s => s.id) } },
+    milestones: {
+      mc: { date: sharedDate(mcDates), note: null, shopIds, shopDates: mcDates },
+      rfsu: { date: sharedDate(rfsuDates), note: null, shopIds, shopDates: rfsuDates },
+    },
     training: [],
-    settings: { calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45, readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, dayType: 'calendar', contractDate: null },
+    settings: { calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45, readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, readyShopIds, dayType: 'calendar', contractDate: null },
   };
 }
 
@@ -158,7 +175,7 @@ function IconButton({ label, onClick, children, danger = false, testId }: { labe
 
 function Modal({ title, subtitle, onClose, children, wide = false }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#17232c]/45 p-4 backdrop-blur-[2px]" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <section className={`fade-in w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-xl border border-[#ded9ce] bg-[#fbfaf5] shadow-[0_24px_80px_rgba(23,35,44,.24)]`}>
+    <section className={`fade-in max-h-[calc(100dvh-2rem)] w-full overflow-y-auto ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-xl border border-[#ded9ce] bg-[#fbfaf5] shadow-[0_24px_80px_rgba(23,35,44,.24)]`}>
       <header className="flex items-start justify-between border-b border-[#e5e1d7] px-6 py-5">
         <div><h2 className="display-font text-xl font-semibold text-[#293640]">{title}</h2>{subtitle && <p className="mt-1 text-sm text-[#777b78]">{subtitle}</p>}</div>
         <IconButton label="Закрыть" onClick={onClose}><span className="text-xl leading-none">×</span></IconButton>
@@ -189,6 +206,11 @@ function Planner() {
   const [newTitle, setNewTitle] = useState('');
   const [newReadyMonths, setNewReadyMonths] = useState('');
   const [newReadyMilestone, setNewReadyMilestone] = useState<'' | 'mc' | 'rfsu'>('');
+  const [newReadyShopIds, setNewReadyShopIds] = useState<string[]>([]);
+  const [newMcDates, setNewMcDates] = useState<Record<string, string | null>>({});
+  const [newRfsuDates, setNewRfsuDates] = useState<Record<string, string | null>>({});
+  const [newMcAllDate, setNewMcAllDate] = useState('');
+  const [newRfsuAllDate, setNewRfsuAllDate] = useState('');
   const [timelineStart, setTimelineStart] = useState('');
   const [timelineEnd, setTimelineEnd] = useState('');
   const [expandedShopIds, setExpandedShopIds] = useState<string[]>([]);
@@ -211,7 +233,7 @@ function Planner() {
       setDraft(data);
       savedJson.current = JSON.stringify(data);
       setTimelineStart(data.startDate);
-      setTimelineEnd(data.endDate);
+      setTimelineEnd(getProjectTimelineEnd(data));
       setExpandedShopIds([]);
       setZoom(1);
     }
@@ -244,12 +266,50 @@ function Planner() {
 
   const patch = (changes: Partial<Project>) => setDraft(current => current ? { ...current, ...changes } : current);
   const notify = (text: string) => { setToast(text); setTimeout(() => setToast(''), 2600); };
+  const openNewProject = () => {
+    const dates = defaultMilestoneDates();
+    const shopIds = defaultShopOptions.map(shop => shop.id);
+    setNewTitle('');
+    setNewReadyMonths('');
+    setNewReadyMilestone('');
+    setNewReadyShopIds(shopIds);
+    setNewMcDates(Object.fromEntries(shopIds.map(id => [id, dates.mc])));
+    setNewRfsuDates(Object.fromEntries(shopIds.map(id => [id, dates.rfsu])));
+    setNewMcAllDate(dates.mc);
+    setNewRfsuAllDate(dates.rfsu);
+    setModal('new');
+  };
+  const setAllNewMilestoneDates = (code: 'mc' | 'rfsu', date: string) => {
+    const dates = Object.fromEntries(defaultShopOptions.map(shop => [shop.id, date]));
+    if (code === 'mc') {
+      setNewMcAllDate(date);
+      setNewMcDates(dates);
+    } else {
+      setNewRfsuAllDate(date);
+      setNewRfsuDates(dates);
+    }
+  };
+  const setNewShopMilestoneDate = (code: 'mc' | 'rfsu', shopId: string, date: string) => {
+    const currentDates = code === 'mc' ? newMcDates : newRfsuDates;
+    const nextDates = { ...currentDates, [shopId]: date };
+    const firstDate = nextDates[defaultShopOptions[0].id] ?? '';
+    const allSame = defaultShopOptions.every(shop => nextDates[shop.id] === firstDate);
+    if (code === 'mc') {
+      setNewMcDates(nextDates);
+      setNewMcAllDate(allSame ? firstDate : '');
+    } else {
+      setNewRfsuDates(nextDates);
+      setNewRfsuAllDate(allSame ? firstDate : '');
+    }
+  };
   const createProject = (e: FormEvent) => {
     e.preventDefault();
     const title = newTitle.trim();
     const readyMonths = Number(newReadyMonths);
-    if (!title || newReadyMonths === '' || !Number.isInteger(readyMonths) || readyMonths < 0 || !newReadyMilestone) return;
-    createMutation.mutate({ data: makeProjectInput(title, readyMonths, newReadyMilestone) }, {
+    const allShopIds = defaultShopOptions.map(shop => shop.id);
+    const datesComplete = allShopIds.every(shopId => !!newMcDates[shopId] && !!newRfsuDates[shopId]);
+    if (!title || newReadyMonths === '' || !Number.isInteger(readyMonths) || readyMonths < 0 || !newReadyMilestone || newReadyShopIds.length === 0 || !datesComplete) return;
+    createMutation.mutate({ data: makeProjectInput(title, readyMonths, newReadyMilestone, newReadyShopIds, newMcDates, newRfsuDates) }, {
       onSuccess: created => {
         qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
         qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
@@ -312,7 +372,7 @@ function Planner() {
     }
     return items;
   }, [project, timelineStart, timelineEnd]);
-  const staffReadyDate = project ? calculateStaffReadyDate(project.settings, project.milestones) : null;
+  const staffReadyDate = project ? getProjectReadyDate(project) : null;
   const trainingTimeline = useMemo(
     () => project ? scheduleTrainingTimeline(project, staffReadyDate) : [],
     [project, staffReadyDate],
@@ -335,10 +395,20 @@ function Planner() {
   const contractShortfall = project?.settings.contractDate && calculatedContractDate
     ? Math.max(0, rawDateDiff(calculatedContractDate, project.settings.contractDate))
     : 0;
+  const missingReadyShopNames = project?.settings.readyMilestone && project.settings.readyMonthsBefore !== undefined
+    ? (project.settings.readyShopIds ?? project.shops.map(shop => shop.id))
+      .filter(shopId => !getShopReadyDate(project, shopId))
+      .map(shopId => project.shops.find(shop => shop.id === shopId)?.name ?? shopId)
+    : [];
   const warningMessages = project ? [
     ...project.phases.filter(p => p.endDate < p.startDate).map(() => 'У этапа дата окончания раньше даты начала.'),
-    ...(project.milestones.mc.date && project.milestones.rfsu.date && project.milestones.mc.date > project.milestones.rfsu.date ? ['MC задана позже RFSU. Проверьте последовательность контрольных дат.'] : []),
-    ...(project.settings.readyMilestone && project.settings.readyMonthsBefore !== undefined && !(project.settings.readyMilestone === 'mc' ? project.milestones.mc.date : project.milestones.rfsu.date) ? [`Для расчёта готовности персонала задайте дату ${project.settings.readyMilestone.toUpperCase()}.`] : []),
+    ...(project.shops.some(shop => {
+      const mcDate = getMilestoneDateForShop(project.milestones.mc, shop.id);
+      const rfsuDate = getMilestoneDateForShop(project.milestones.rfsu, shop.id);
+      return mcDate && rfsuDate && mcDate > rfsuDate;
+    }) ? ['MC задана позже RFSU хотя бы для одного цеха. Проверьте контрольные даты.'] : []),
+    ...(project.settings.readyMilestone && project.settings.readyMonthsBefore !== undefined && !(project.settings.readyShopIds ?? project.shops.map(shop => shop.id)).length ? ['Выберите хотя бы один цех для правила готовности 100%.'] : []),
+    ...(missingReadyShopNames.length ? [`Для расчёта готовности задайте дату ${project.settings.readyMilestone?.toUpperCase()} для цехов: ${missingReadyShopNames.join(', ')}.`] : []),
     ...(!project.settings.readyMilestone && project.settings.readyMode === 'relative' && !project.milestones.mc.date ? ['Для расчёта даты готовности персонала сначала задайте MC.'] : []),
     ...(!project.settings.readyMilestone && project.settings.readyMode === 'fixed' && project.settings.readyDate && project.milestones.mc.date && project.settings.readyDate > project.milestones.mc.date ? ['Персонал готов позже даты MC.'] : []),
     ...(contractDate && staffReadyDate && contractDate > staffReadyDate ? ['Дата контракта позже даты готовности персонала.'] : []),
@@ -459,31 +529,11 @@ function Planner() {
     });
   };
 
-  if (projectsQuery.isLoading) return <div className="flex min-h-[100dvh] bg-[#f5f2e9]"><aside className="sidebar w-[238px] p-6"><div className="h-7 w-40 animate-pulse rounded bg-white/10" /></aside><main className="flex-1 p-8"><div className="h-10 w-72 animate-pulse rounded bg-[#e7e2d7]" /><div className="mt-8 h-64 animate-pulse rounded-xl bg-[#ebe7dd]" /></main></div>;
+  if (projectsQuery.isLoading) return <main className="min-h-[100dvh] bg-[#f5f2e9] p-8"><div className="h-10 w-72 animate-pulse rounded bg-[#e7e2d7]" /><div className="mt-8 h-64 animate-pulse rounded-xl bg-[#ebe7dd]" /></main>;
   if (projectsQuery.isError) return <main className="flex min-h-[100dvh] items-center justify-center bg-[#f5f2e9]"><div className="panel max-w-md rounded-xl p-8 text-center"><AlertTriangle className="mx-auto mb-3 text-[#bd4c2b]" /><h1 className="display-font text-xl">Не удалось загрузить портфель</h1><p className="mt-2 text-sm text-[#6d7475]">Проверьте соединение с сервером и попробуйте ещё раз.</p><button className="btn-primary mt-5 rounded-md px-4 py-2 text-sm font-bold" onClick={() => projectsQuery.refetch()}>Повторить</button></div></main>;
 
-  return <div className="app-shell grain flex text-[#293640]">
-    <aside className="sidebar sidebar-grid sticky top-0 flex h-[100dvh] w-[238px] shrink-0 flex-col px-5 py-6">
-      <div className="flex items-center gap-3 border-b border-white/10 pb-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#bd4c2b] text-white"><Factory size={20} strokeWidth={1.8} /></div>
-        <div className="sidebar-copy"><div className="text-[10px] font-bold uppercase tracking-[.18em] text-[#bdc5c1]">контур / 04</div><div className="mt-0.5 text-sm font-extrabold tracking-tight">Планировщик</div></div>
-      </div>
-      <div className="sidebar-label mt-7 mb-2 px-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#9aa6a6]">Рабочая область</div>
-      <div className="flex items-center gap-3 rounded-lg bg-white/10 px-3 py-3 text-sm font-semibold text-white"><Layers3 size={17} className="text-[#e08a64]" /><span className="sidebar-label">Портфель проектов</span><span className="sidebar-label ml-auto rounded bg-white/10 px-1.5 py-0.5 text-[10px] mono">{projects.length}</span></div>
-      <div className="sidebar-label mt-8 mb-2 px-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#9aa6a6]">Сводка контура</div>
-      <div className="space-y-1.5 px-2">
-        <SidebarMetric icon={<ClipboardList size={14} />} label="Проектов" value={summaryQuery.data?.projectCount ?? projects.length} />
-        <SidebarMetric icon={<Activity size={14} />} label="Этапов" value={summaryQuery.data?.phaseCount ?? 0} />
-        <SidebarMetric icon={<Users size={14} />} label="Обучений" value={summaryQuery.data?.trainingCount ?? 0} />
-      </div>
-      <div className="mt-auto rounded-lg border border-white/10 bg-white/[.045] p-3.5">
-        <div className="flex items-center gap-2 text-xs font-semibold text-[#e6e4da]"><ShieldCheck size={15} className="text-[#89aaa2]" />Данные синхронизированы</div>
-        <p className="sidebar-copy mt-2 text-[11px] leading-relaxed text-[#aeb9b6]">Контроль сроков строительства и готовности персонала в одном плане.</p>
-      </div>
-      <div className="sidebar-copy mt-4 flex items-center justify-between px-1 text-[10px] text-[#93a09e]"><span>Оперативный контур</span><span className="mono">v1.4</span></div>
-    </aside>
-
-    <main className="min-w-0 flex-1">
+  return <div className="app-shell grain text-[#293640]">
+    <main className="min-w-0">
       <header className="flex h-[66px] items-center justify-between border-b border-[#e0dcd1] bg-[#f8f6ef] px-5 md:px-8">
         <div className="flex min-w-0 items-center gap-2 text-xs text-[#777b78]"><span>Портфель</span><ChevronRight size={13} /><span className="truncate font-bold text-[#293640]">{project?.title ?? 'Выберите проект'}</span></div>
         <div className="flex items-center gap-2">
@@ -492,7 +542,7 @@ function Planner() {
             {saveState === 'saving' ? 'Сохранение…' : saveState === 'error' ? 'Не удалось сохранить' : 'Сохранено'}
           </div>
           {project && <button onClick={retrySave} disabled={updateMutation.isPending} className="control inline-flex h-9 items-center gap-1.5 px-2.5 text-xs font-bold text-[#56645e] disabled:opacity-50"><Save size={13} />{saveState === 'error' ? 'Повторить' : 'Сохранить'}</button>}
-          <button data-testid="button-new-project" onClick={() => { setNewTitle(''); setNewReadyMonths(''); setNewReadyMilestone(''); setModal('new'); }} className="btn-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold"><Plus size={15} />Новый проект</button>
+          <button data-testid="button-new-project" onClick={openNewProject} className="btn-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold"><Plus size={15} />Новый проект</button>
         </div>
       </header>
 
@@ -542,7 +592,7 @@ function Planner() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button data-testid="button-add-phase" onClick={() => { setEditingPhase(null); setModal('phase'); }} className="control inline-flex h-8 items-center gap-1.5 px-2.5 text-[11px] font-bold text-[#4b5959]"><Plus size={13} />Этап</button>
                     <button data-testid="button-add-training" onClick={() => { setEditingTraining(null); setModal('training'); }} className="control inline-flex h-8 items-center gap-1.5 px-2.5 text-[11px] font-bold text-[#4b5959]"><Users size={13} />Обучение</button>
-                    <button onClick={() => { void downloadRecruitmentWorkbook(project, staffReadyDate).catch(error => { console.error('Failed to build recruitment workbook', error); window.alert('Не удалось сформировать Excel-файл. Повторите попытку.'); }); }} className="btn-primary inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[10px] font-bold sm:text-[11px]"><FileSpreadsheet size={14} />Сформировать план набора персонала</button>
+                    <button onClick={() => { void downloadRecruitmentWorkbook(project).catch(error => { console.error('Failed to build recruitment workbook', error); window.alert('Не удалось сформировать Excel-файл. Повторите попытку.'); }); }} className="btn-primary inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[10px] font-bold sm:text-[11px]"><FileSpreadsheet size={14} />Сформировать план набора персонала</button>
                     <button aria-label="Настройки расчёта" onClick={() => setModal('settings')} className="control flex h-8 w-8 items-center justify-center text-[#65716d]"><Settings2 size={14} /></button>
                     <IconButton label="Копировать проект" onClick={copyCurrent}><Copy size={14} /></IconButton>
                     <IconButton label="Удалить проект" onClick={removeProject} danger><Trash2 size={14} /></IconButton>
@@ -572,7 +622,7 @@ function Planner() {
                     <IconButton label="Приблизить" onClick={() => zoomTimeline(zoom + .15)}><ZoomIn size={14} /></IconButton>
                     <IconButton label="Сдвинуть раньше" onClick={() => { const delta = Math.round(totalDays * .15 / zoom); setTimelineStart(s => shiftDate(s || project.startDate, -delta)); setTimelineEnd(s => shiftDate(s || project.endDate, -delta)); }}><ArrowLeft size={14} /></IconButton>
                     <IconButton label="Сдвинуть позже" onClick={() => { const delta = Math.round(totalDays * .15 / zoom); setTimelineStart(s => shiftDate(s || project.startDate, delta)); setTimelineEnd(s => shiftDate(s || project.endDate, delta)); }}><ArrowRight size={14} /></IconButton>
-                    <button onClick={() => { setTimelineStart(project.startDate); setTimelineEnd(project.endDate); setZoom(1); }} className="btn-quiet rounded px-2 py-1 text-[10px] font-bold text-[#586764]">Весь проект</button>
+                    <button onClick={() => { setTimelineStart(project.startDate); setTimelineEnd(getProjectTimelineEnd(project)); setZoom(1); }} className="btn-quiet rounded px-2 py-1 text-[10px] font-bold text-[#586764]">Весь проект</button>
                     <button onClick={() => { const now = iso(new Date()); const span = Math.max(90, Math.round(totalDays / zoom)); setTimelineStart(shiftDate(now, -span * .35)); setTimelineEnd(shiftDate(now, span * .65)); }} className="btn-quiet rounded px-2 py-1 text-[10px] font-bold text-[#bd4c2b]">Сегодня</button>
                   </div>
                 </div>
@@ -591,14 +641,19 @@ function Planner() {
                       <div className="timeline-grid relative h-8 flex-1 overflow-hidden">{months.map((m, i) => <span key={`${m.label}-${i}`} className="absolute top-2 -translate-x-1/2 whitespace-nowrap text-[9px] font-semibold uppercase text-[#888a80]" style={{ left: `${m.left}%` }}>{m.label}</span>)}</div>
                     </div>
                     {project.shops.map((shop, shopIndex) => {
-                      const phases = project.phases.filter(p => p.shopIds.includes(shop.id));
+                      const phases = getShopTimelinePhases(project.phases, project.milestones, shop.id);
+                      const rowMinHeight = Math.max(75, 10 + Math.max(0, phases.length - 1) * 22 + 30);
                       const roleSummary = getShopRoleSummary(shop);
                       const plannedRoles = roleSummary.roles;
                       const visibleRoles = roleSummary.count;
                       const rolesExpanded = expandedShopIds.includes(shop.id);
-                      const mcReady = project.milestones.mc.date && (!project.milestones.mc.shopIds.length || project.milestones.mc.shopIds.includes(shop.id));
+                      const shopReadyDate = getShopReadyDate(project, shop.id);
+                      const mcDate = getMilestoneDateForShop(project.milestones.mc, shop.id);
+                      const rfsuDate = getMilestoneDateForShop(project.milestones.rfsu, shop.id);
+                      const mcReady = isMilestoneApplicableToShop(project.milestones.mc, shop.id);
+                      const rfsuReady = isMilestoneApplicableToShop(project.milestones.rfsu, shop.id);
                       return <div key={shop.id} className="border-b border-[#ece8df] last:border-0">
-                        <div className="flex min-h-[75px]">
+                        <div className="flex min-h-[75px]" style={{ minHeight: `${rowMinHeight}px` }}>
                           <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fbfaf5] px-4">
                             <div className="flex items-center gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-md text-[9px] font-extrabold ${['bg-[#e8eee5] text-[#507565]', 'bg-[#f3ead9] text-[#92713c]', 'bg-[#f4e4dc] text-[#a64d32]', 'bg-[#e5ebef] text-[#5e7380]'][shopIndex % 4]}`}>{plantShort[shop.name] ?? `Ц${shopIndex + 1}`}</span><span className="text-xs font-bold">{shop.name}</span></div>
                             <div className="ml-8 mt-1 max-w-[168px] text-[8px] leading-[1.25] text-[#85877e]">
@@ -615,20 +670,24 @@ function Planner() {
                           </div>
                           <div className="timeline-grid relative min-w-0 flex-1 py-2.5">
                             <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
-                            {phases.map((phase, i) => {
-                              const left = position(phase.startDate);
-                              const barWidth = width(phase.startDate, phase.endDate);
-                              return <button key={phase.id} onPointerDown={event => startPhaseDrag(event, phase)} onPointerMove={movePhaseDrag} onPointerUp={() => { phaseDragRef.current = null; }} onPointerCancel={() => { phaseDragRef.current = null; }} onClick={() => { if (phaseMovedRef.current) { phaseMovedRef.current = false; return; } setEditingPhase(phase); setModal('phase'); }} title={`${phase.name}: ${fmt(phase.startDate)} — ${fmt(phase.endDate)}. Перетащите полосу, чтобы сдвинуть; края — чтобы изменить даты.`} className="phase-bar absolute flex h-[18px] touch-none items-center overflow-hidden rounded-[4px] px-2 text-left text-[9px] font-bold text-white shadow-sm cursor-grab active:cursor-grabbing" style={{ top: `${10 + i * 22}px`, left: `${left}%`, width: `${barWidth}%`, backgroundColor: phaseColors[phase.type] ?? '#587c79' }}><span aria-hidden="true" className="absolute left-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /><span className="truncate">{phase.name}</span><span aria-hidden="true" className="absolute right-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /></button>;
+                            {phases.map((timelinePhase, i) => {
+                              const left = position(timelinePhase.startDate);
+                              const barWidth = width(timelinePhase.startDate, timelinePhase.endDate);
+                              const title = `${timelinePhase.name}: ${fmt(timelinePhase.startDate)} — ${fmt(timelinePhase.endDate)}${timelinePhase.editablePhase ? '. Перетащите полосу, чтобы сдвинуть; края — чтобы изменить даты.' : '. Даты определяются контрольными точками.'}`;
+                              const style = { top: `${10 + i * 22}px`, left: `${left}%`, width: `${barWidth}%`, backgroundColor: phaseColors[timelinePhase.type] ?? '#587c79' };
+                              if (!timelinePhase.editablePhase) return <div key={timelinePhase.id} title={title} onPointerDown={event => event.stopPropagation()} className="phase-bar absolute flex h-[18px] items-center overflow-hidden rounded-[4px] px-2 text-[9px] font-bold text-white shadow-sm" style={style}><span className="truncate">{timelinePhase.name}</span></div>;
+                              const phase = timelinePhase.editablePhase;
+                              return <button key={timelinePhase.id} onPointerDown={event => startPhaseDrag(event, phase)} onPointerMove={movePhaseDrag} onPointerUp={() => { phaseDragRef.current = null; }} onPointerCancel={() => { phaseDragRef.current = null; }} onClick={() => { if (phaseMovedRef.current) { phaseMovedRef.current = false; return; } setEditingPhase(phase); setModal('phase'); }} title={title} className="phase-bar absolute flex h-[18px] touch-none items-center overflow-hidden rounded-[4px] px-2 text-left text-[9px] font-bold text-white shadow-sm cursor-grab active:cursor-grabbing" style={style}><span aria-hidden="true" className="absolute left-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /><span className="truncate">{timelinePhase.name}</span><span aria-hidden="true" className="absolute right-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /></button>;
                             })}
                             {contractDate && <MilestoneLine date={contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" />}
-                            {staffReadyDate && <MilestoneLine date={staffReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов 100%" color="#315f59" />}
-                            {mcReady && project.milestones.mc.date && <MilestoneLine date={project.milestones.mc.date} start={timelineStart || project.startDate} totalDays={totalDays} label="MC" color="#bd4c2b" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, date } } }); }} />}
-                            {project.milestones.rfsu.date && (!project.milestones.rfsu.shopIds.length || project.milestones.rfsu.shopIds.includes(shop.id)) && <MilestoneLine date={project.milestones.rfsu.date} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, date } } }); }} />}
+                            {shopReadyDate && <MilestoneLine date={shopReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов 100%" color="#315f59" />}
+                            {mcReady && mcDate && <MilestoneLine date={mcDate} start={timelineStart || project.startDate} totalDays={totalDays} label="MC" color="#bd4c2b" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: withMilestoneShopDate(project.milestones.mc, project.shops.map(item => item.id), shop.id, date) } }); }} />}
+                            {rfsuReady && rfsuDate && <MilestoneLine date={rfsuDate} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date, shiftDate(date, REGIME_RAMP_UP_DAYS)]); patch({ milestones: { ...project.milestones, rfsu: withMilestoneShopDate(project.milestones.rfsu, project.shops.map(item => item.id), shop.id, date) } }); }} />}
                           </div>
                         </div>
                         {phases.length === 0 && <div className="border-t border-dashed border-[#ece8df] py-1 pl-[200px] text-[9px] text-[#a3a195]">Для площадки нет назначенных этапов</div>}
                         {rolesExpanded && (plannedRoles.length ? plannedRoles.map(role => {
-                          const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, staffReadyDate);
+                          const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, shopReadyDate);
                           const left = rolePlan.startDate ? position(rolePlan.startDate) : 0;
                           const barWidth = rolePlan.startDate && rolePlan.endDate ? width(rolePlan.startDate, rolePlan.endDate) : 0;
                           return <div key={role.id} className="flex min-h-[42px] border-t border-[#ece8df] bg-[#fdfcf8]">
@@ -757,12 +816,11 @@ function Planner() {
                 <section className="panel rounded-xl">
                   <div className="border-b border-[#e5e1d7] px-4 py-3"><h3 className="text-xs font-extrabold">Контрольные даты</h3><p className="mt-0.5 text-[10px] text-[#85877e]">Основные точки готовности</p></div>
                   <div className="grid grid-cols-2 divide-x divide-[#eee9df]">
-                    <MilestoneCard code="MC" title="Механическая готовность" date={project.milestones.mc.date} note={project.milestones.mc.note} shops={project.shops} shopIds={project.milestones.mc.shopIds} onChange={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, date } } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, shopIds: project.milestones.mc.shopIds.includes(id) ? project.milestones.mc.shopIds.filter(value => value !== id) : [...project.milestones.mc.shopIds, id] } } })} />
-                    <MilestoneCard code="RFSU" title="Готовность к пуску" date={project.milestones.rfsu.date} note={project.milestones.rfsu.note} shops={project.shops} shopIds={project.milestones.rfsu.shopIds} onChange={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, date } } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, shopIds: project.milestones.rfsu.shopIds.includes(id) ? project.milestones.rfsu.shopIds.filter(value => value !== id) : [...project.milestones.rfsu.shopIds, id] } } })} />
+                    <MilestoneCard code="MC" title="Механическая готовность" date={commonMilestoneDate(project.milestones.mc, project.shops.map(shop => shop.id))} shopDates={project.milestones.mc.shopDates ?? {}} note={project.milestones.mc.note} shops={project.shops} shopIds={project.milestones.mc.shopIds} onChange={date => { const shopDates = Object.fromEntries(project.shops.map(shop => [shop.id, date])); expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, date, shopDates } } }); }} onShopDateChange={(shopId, date) => { const mc = withMilestoneShopDate(project.milestones.mc, project.shops.map(shop => shop.id), shopId, date); expandTimeline([date]); patch({ milestones: { ...project.milestones, mc } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, shopIds: project.milestones.mc.shopIds.includes(id) ? project.milestones.mc.shopIds.filter(value => value !== id) : [...project.milestones.mc.shopIds, id] } } })} />
+                    <MilestoneCard code="RFSU" title="Готовность к пуску" date={commonMilestoneDate(project.milestones.rfsu, project.shops.map(shop => shop.id))} shopDates={project.milestones.rfsu.shopDates ?? {}} note={project.milestones.rfsu.note} shops={project.shops} shopIds={project.milestones.rfsu.shopIds} onChange={date => { const shopDates = Object.fromEntries(project.shops.map(shop => [shop.id, date])); expandTimeline([date, date ? shiftDate(date, REGIME_RAMP_UP_DAYS) : null]); patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, date, shopDates } } }); }} onShopDateChange={(shopId, date) => { const rfsu = withMilestoneShopDate(project.milestones.rfsu, project.shops.map(shop => shop.id), shopId, date); expandTimeline([date, date ? shiftDate(date, REGIME_RAMP_UP_DAYS) : null]); patch({ milestones: { ...project.milestones, rfsu } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, shopIds: project.milestones.rfsu.shopIds.includes(id) ? project.milestones.rfsu.shopIds.filter(value => value !== id) : [...project.milestones.rfsu.shopIds, id] } } })} />
                   </div>
                   <ReadyMilestoneCard
-                    settings={project.settings}
-                    milestones={project.milestones}
+                    project={project}
                     onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
                   />
                 </section>
@@ -773,18 +831,28 @@ function Planner() {
       </div>
     </main>
 
-    {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)}><form onSubmit={createProject} className="p-6">
+    {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)} wide><form onSubmit={createProject} className="space-y-4 p-6">
       <Field label="Название проекта"><input autoFocus data-testid="input-new-project-title" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Например, Модернизация установки № 2" className="control h-11 w-full px-3 text-sm" required /></Field>
-      <div className="mt-4 rounded-md border border-[#e2ddd2] p-3">
+      <div className="rounded-md border border-[#e2ddd2] p-3">
         <h3 className="text-xs font-extrabold text-[#293640]">Готовность персонала «Готов 100%»</h3>
-        <p className="mt-1 text-[10px] text-[#777b78]">Укажите срок и контрольную дату. Оба значения обязательны.</p>
+        <p className="mt-1 text-[10px] text-[#777b78]">Укажите срок, контрольную дату и цеха, для которых считается готовность.</p>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {defaultShopOptions.map(shop => <label key={shop.id} className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-2 text-[10px] font-semibold ${newReadyShopIds.includes(shop.id) ? 'border-[#91aaa0] bg-[#e9eee8] text-[#416a5d]' : 'border-[#ded9ce] text-[#777b78]'}`}>
+            <input data-testid={`checkbox-new-ready-shop-${shop.id}`} type="checkbox" checked={newReadyShopIds.includes(shop.id)} onChange={() => setNewReadyShopIds(current => current.includes(shop.id) ? current.filter(id => id !== shop.id) : [...current, shop.id])} className="accent-[#557d6e]" />
+            {shop.name}
+          </label>)}
+        </div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Field label="За (месяцев)"><input data-testid="input-new-ready-months" aria-label="Месяцев до готовности 100%" type="number" min="0" step="1" value={newReadyMonths} onChange={e => setNewReadyMonths(e.target.value)} placeholder="Например, 3" className="control h-10 w-full px-3 text-sm" required /></Field>
           <Field label="До даты"><select data-testid="select-new-ready-milestone" aria-label="Контрольная дата готовности 100%" value={newReadyMilestone} onChange={e => setNewReadyMilestone(e.target.value as '' | 'mc' | 'rfsu')} className="control h-10 w-full px-2 text-xs" required><option value="">Выберите MC или RFSU</option><option value="mc">MC</option><option value="rfsu">RFSU</option></select></Field>
         </div>
       </div>
-      <div className="mt-3 rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f7773]">Будут созданы четыре производственные площадки, базовые роли и стартовые этапы. Их можно скорректировать в плане.</div>
-      <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <ShopMilestoneDateFields code="MC" title="Механическая готовность" allDate={newMcAllDate} dates={newMcDates} onAllDateChange={date => setAllNewMilestoneDates('mc', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('mc', shopId, date)} />
+        <ShopMilestoneDateFields code="RFSU" title="Готовность к пуску" allDate={newRfsuAllDate} dates={newRfsuDates} onAllDateChange={date => setAllNewMilestoneDates('rfsu', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('rfsu', shopId, date)} />
+      </div>
+      <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Задайте общую дату для всех цехов или укажите отдельные даты ниже. Будут созданы четыре площадки, базовые роли и стартовые этапы.</div>
+      <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !newReadyMonths || !newReadyMilestone || !newReadyShopIds.length} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
     </form></Modal>}
     {modal === 'phase' && project && <PhaseModal phase={editingPhase} project={project} onClose={() => setModal(null)} onSave={phase => { const phases = editingPhase ? project.phases.map(p => p.id === phase.id ? phase : p) : [...project.phases, phase]; expandTimeline([phase.startDate, phase.endDate]); patch({ phases }); setModal(null); }} onDelete={() => { if (editingPhase && window.confirm('Удалить этот этап из плана?')) { patch({ phases: project.phases.filter(p => p.id !== editingPhase.id) }); setModal(null); } }} />}
     {modal === 'training' && project && <TrainingModal event={editingTraining} project={project} onClose={() => setModal(null)} onSave={event => { const training = editingTraining ? project.training.map(t => t.id === event.id ? event : t) : [...project.training, { ...event, sortOrder: project.training.length }]; patch({ training }); setModal(null); }} onDelete={() => { if (editingTraining && window.confirm('Удалить событие обучения?')) { patch({ training: project.training.filter(t => t.id !== editingTraining.id) }); setModal(null); } }} />}
@@ -802,14 +870,11 @@ function Planner() {
         patch({ shops, training: [...project.training, { ...event, sortOrder: project.training.length }] });
       }}
     />}
-    {modal === 'settings' && project && <SettingsModal project={project} onClose={() => setModal(null)} onSave={changes => { patch(changes); if (changes.startDate) setTimelineStart(changes.startDate); if (changes.endDate) setTimelineEnd(changes.endDate); setModal(null); }} />}
+    {modal === 'settings' && project && <SettingsModal project={project} onClose={() => setModal(null)} onSave={changes => { const updated = { ...project, ...changes }; patch(changes); if (changes.startDate) setTimelineStart(changes.startDate); if (changes.endDate) setTimelineEnd(getProjectTimelineEnd(updated)); setModal(null); }} />}
     {toast && <div className="fixed bottom-5 right-5 z-[90] flex items-center gap-2 rounded-lg bg-[#293640] px-4 py-3 text-xs font-semibold text-white shadow-xl"><Check size={14} className="text-[#9bb7a7]" />{toast}</div>}
   </div>;
 }
 
-function SidebarMetric({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
-  return <div className="flex items-center gap-2.5 py-1 text-[11px] text-[#c3cbc6]"><span className="text-[#93a59e]">{icon}</span><span className="sidebar-label">{label}</span><span className="sidebar-label ml-auto mono text-[10px] text-white">{value}</span></div>;
-}
 function SummaryTile({ label, value, unit, tone }: { label: string; value: number; unit: string; tone: string }) {
   const colors: Record<string, string> = { orange: 'bg-[#f2e4dc] text-[#a84b30]', teal: 'bg-[#e1eae4] text-[#4d7669]', sand: 'bg-[#f1ead9] text-[#927543]', blue: 'bg-[#e4e9ed] text-[#617584]' };
   return <div className="panel flex min-h-[78px] items-center justify-between rounded-lg px-3.5 py-3 md:px-4"><div><div className="text-[9px] font-bold uppercase tracking-[.1em] text-[#85877e]">{label}</div><div className="mt-1 flex items-baseline gap-1.5"><span className="mono text-[21px] font-medium leading-none">{value}</span><span className="text-[10px] text-[#898a82]">{unit}</span></div></div><div className={`flex h-8 w-8 items-center justify-center rounded-lg ${colors[tone]}`}><Activity size={15} /></div></div>;
@@ -870,21 +935,37 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
 function Legend({ swatch, diamond, dot, label }: { swatch?: string; diamond?: string; dot?: string; label: string }) {
   return <span className="inline-flex items-center gap-1.5">{swatch && <i className="h-2 w-2 rounded-[2px]" style={{ background: swatch }} />}{diamond && <i className="h-2 w-2 rotate-45 border-[1.5px]" style={{ borderColor: diamond }} />}{dot && <i className="h-2 w-2 rounded-full" style={{ background: dot }} />}{label}</span>;
 }
-function MilestoneCard({ code, title, date, note, shops, shopIds, onChange, onNoteChange, onShopToggle }: { code: string; title: string; date: string | null; note: string | null; shops: Project['shops']; shopIds: string[]; onChange: (date: string | null) => void; onNoteChange: (note: string | null) => void; onShopToggle: (id: string) => void }) {
-  return <div className="px-4 py-3"><div className="flex items-center gap-2"><span className={`mono rounded px-1.5 py-0.5 text-[9px] font-bold ${code === 'MC' ? 'bg-[#f5e6df] text-[#a8492e]' : 'bg-[#e7eee8] text-[#4e7066]'}`}>{code}</span><span className="text-[10px] font-bold">{title}</span></div><div className="mt-2"><input aria-label={`Дата ${code}`} type="date" value={date ?? ''} onChange={e => onChange(e.target.value || null)} className="control h-8 w-full px-2 text-[10px]" /></div><input aria-label={`Примечание ${code}`} value={note ?? ''} onChange={e => onNoteChange(e.target.value || null)} placeholder="Примечание" className="control mt-2 h-8 w-full px-2 text-[10px]" /><div className="mt-2 flex flex-wrap gap-1">{shops.map(shop => <button type="button" key={shop.id} onClick={() => onShopToggle(shop.id)} className={`rounded px-1.5 py-1 text-[8px] font-bold ${shopIds.includes(shop.id) ? 'bg-[#e9eee8] text-[#527166]' : 'bg-[#f0eee8] text-[#99998e]'}`}>{plantShort[shop.name] ?? shop.name}</button>)}</div></div>;
+function MilestoneCard({ code, title, date, shopDates, note, shops, shopIds, onChange, onShopDateChange, onNoteChange, onShopToggle }: { code: string; title: string; date: string | null; shopDates: Record<string, string | null>; note: string | null; shops: Project['shops']; shopIds: string[]; onChange: (date: string | null) => void; onShopDateChange: (shopId: string, date: string | null) => void; onNoteChange: (note: string | null) => void; onShopToggle: (id: string) => void }) {
+  return <div className="px-4 py-3">
+    <div className="flex items-center gap-2"><span className={`mono rounded px-1.5 py-0.5 text-[9px] font-bold ${code === 'MC' ? 'bg-[#f5e6df] text-[#a8492e]' : 'bg-[#e7eee8] text-[#4e7066]'}`}>{code}</span><span className="text-[10px] font-bold">{title}</span></div>
+    <div className="mt-2"><input data-testid={`input-milestone-${code.toLowerCase()}-all-date`} aria-label={`Общая дата ${code} для всех цехов`} type="date" value={date ?? ''} onChange={e => onChange(e.target.value || null)} className="control h-8 w-full px-2 text-[10px]" /></div>
+    <details className="mt-2">
+      <summary className="cursor-pointer text-[9px] font-semibold text-[#65716d]">Даты по каждому цеху</summary>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {shops.map(shop => {
+          const shopDate = Object.prototype.hasOwnProperty.call(shopDates, shop.id) ? shopDates[shop.id] : date;
+          return <Field key={shop.id} label={shop.name}><input data-testid={`input-milestone-${code.toLowerCase()}-${shop.id}`} aria-label={`${code} · ${shop.name}`} type="date" value={shopDate ?? ''} onChange={event => onShopDateChange(shop.id, event.target.value || null)} className="control h-8 w-full px-2 text-[10px]" /></Field>;
+        })}
+      </div>
+    </details>
+    <input aria-label={`Примечание ${code}`} value={note ?? ''} onChange={e => onNoteChange(e.target.value || null)} placeholder="Примечание" className="control mt-2 h-8 w-full px-2 text-[10px]" />
+    <div className="mt-2 flex flex-wrap gap-1">{shops.map(shop => <button type="button" key={shop.id} onClick={() => onShopToggle(shop.id)} className={`rounded px-1.5 py-1 text-[8px] font-bold ${shopIds.includes(shop.id) ? 'bg-[#e9eee8] text-[#527166]' : 'bg-[#f0eee8] text-[#99998e]'}`}>{plantShort[shop.name] ?? shop.name}</button>)}</div>
+  </div>;
 }
-function ReadyMilestoneCard({ settings, milestones, onChange }: { settings: Project['settings']; milestones: Project['milestones']; onChange: (settings: Partial<Project['settings']>) => void }) {
+function ReadyMilestoneCard({ project, onChange }: { project: Project; onChange: (settings: Partial<Project['settings']>) => void }) {
+  const { settings, milestones, shops } = project;
   const [months, setMonths] = useState(settings.readyMonthsBefore === undefined ? '' : String(settings.readyMonthsBefore));
   useEffect(() => {
     setMonths(settings.readyMonthsBefore === undefined ? '' : String(settings.readyMonthsBefore));
   }, [settings.readyMonthsBefore]);
-  const readyDate = calculateStaffReadyDate(settings, milestones);
-  const hasNewRule = settings.readyMonthsBefore !== undefined && !!settings.readyMilestone;
+  const readyDate = getProjectReadyDate({ ...project, settings });
+  const selectedShopIds = settings.readyShopIds ?? shops.map(shop => shop.id);
+  const hasNewRule = settings.readyMonthsBefore !== undefined && !!settings.readyMilestone && selectedShopIds.length > 0;
   return <div className="border-t border-[#eee9df] px-4 py-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h4 className="text-[10px] font-extrabold text-[#293640]">Готов 100%</h4>
-        <p className="mt-0.5 text-[9px] text-[#85877e]">Дата общей готовности персонала</p>
+        <p className="mt-0.5 text-[9px] text-[#85877e]">Дата общей готовности выбранных цехов</p>
       </div>
       <span data-testid="text-ready-100-date" className="text-[10px] font-bold text-[#315f59]">{fmt(readyDate)}</span>
     </div>
@@ -922,12 +1003,42 @@ function ReadyMilestoneCard({ settings, milestones, onChange }: { settings: Proj
         <option value="mc">MC</option>
         <option value="rfsu">RFSU</option>
       </select>
-      {!hasNewRule && <span className="basis-full text-[9px] text-[#a7472e]">Заполните срок и выберите MC или RFSU, чтобы настроить новую формулу.</span>}
     </div>
+    <div className="mt-3">
+      <p className="mb-1.5 text-[9px] font-bold text-[#777b78]">Правило применяется к:</p>
+      <div className="flex flex-wrap gap-1.5">
+        {shops.map(shop => {
+          const checked = selectedShopIds.includes(shop.id);
+          return <label key={shop.id} className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-1.5 text-[9px] font-semibold ${checked ? 'border-[#91aaa0] bg-[#e9eee8] text-[#416a5d]' : 'border-[#ded9ce] text-[#777b78]'}`}>
+            <input
+              data-testid={`checkbox-ready-shop-${shop.id}`}
+              type="checkbox"
+              checked={checked}
+              disabled={checked && selectedShopIds.length === 1}
+              onChange={() => onChange({ readyShopIds: checked ? selectedShopIds.filter(id => id !== shop.id) : [...selectedShopIds, shop.id] })}
+              className="accent-[#557d6e]"
+            />
+            {shop.name}
+          </label>;
+        })}
+      </div>
+    </div>
+    {!hasNewRule && <p className="mt-2 text-[9px] text-[#a7472e]">Заполните срок и выберите MC или RFSU, чтобы настроить новую формулу.</p>}
+    {hasNewRule && !readyDate && <p className="mt-2 text-[9px] text-[#a7472e]">Для всех выбранных цехов должны быть заданы даты выбранной отсечки.</p>}
   </div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-1.5 block text-[11px] font-bold text-[#56615f]">{label}</span>{children}</label>;
+}
+function ShopMilestoneDateFields({ code, title, allDate, dates, onAllDateChange, onShopDateChange }: { code: 'MC' | 'RFSU'; title: string; allDate: string; dates: Record<string, string | null>; onAllDateChange: (date: string) => void; onShopDateChange: (shopId: string, date: string) => void }) {
+  return <section className="rounded-md border border-[#e2ddd2] p-3">
+    <div className="flex items-center gap-2"><span className={`mono rounded px-1.5 py-0.5 text-[9px] font-bold ${code === 'MC' ? 'bg-[#f5e6df] text-[#a8492e]' : 'bg-[#e7eee8] text-[#4e7066]'}`}>{code}</span><h3 className="text-[10px] font-extrabold">{title}</h3></div>
+    <Field label={`Дата ${code} сразу для всех цехов`}><input data-testid={`input-new-${code.toLowerCase()}-all-date`} type="date" value={allDate} onChange={event => onAllDateChange(event.target.value)} className="control mt-2 h-9 w-full px-2 text-xs" /></Field>
+    <p className="mt-1 text-[9px] text-[#85877e]">Общую дату можно заменить индивидуально:</p>
+    <div className="mt-2 space-y-2">
+      {defaultShopOptions.map(shop => <Field key={shop.id} label={shop.name}><input data-testid={`input-new-${code.toLowerCase()}-date-${shop.id}`} aria-label={`${code} · ${shop.name}`} type="date" value={dates[shop.id] ?? ''} onChange={event => onShopDateChange(shop.id, event.target.value)} className="control h-8 w-full px-2 text-[10px]" required /></Field>)}
+    </div>
+  </section>;
 }
 function PhaseModal({ phase, project, onClose, onSave, onDelete }: { phase: Phase | null; project: Project; onClose: () => void; onSave: (phase: Phase) => void; onDelete: () => void }) {
   const [name, setName] = useState(phase?.name ?? '');
@@ -1051,7 +1162,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
   const [settings, setSettings] = useState(project.settings);
   const [startDate, setStartDate] = useState(project.startDate);
   const [endDate, setEndDate] = useState(project.endDate);
-  const readyDate = calculateStaffReadyDate(settings, project.milestones);
+  const readyDate = getProjectReadyDate({ ...project, settings });
   const plannedDays = totalTrainingDays(project.training, settings.calculationMode, settings.dayType);
   const autoContractDate = readyDate
     ? (settings.dayType === 'working' ? shiftWorkingDays(readyDate, -plannedDays) : shiftDate(readyDate, -plannedDays))
@@ -1069,7 +1180,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
         <div className="mb-2 text-[10px] font-extrabold uppercase tracking-[.12em] text-[#88897f]">Готовность персонала</div>
         <div className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f7773]">
           {settings.readyMonthsBefore !== undefined && settings.readyMilestone
-            ? `Готов 100% за ${settings.readyMonthsBefore} мес. до ${settings.readyMilestone.toUpperCase()}.`
+            ? `Готов 100% за ${settings.readyMonthsBefore} мес. до ${settings.readyMilestone.toUpperCase()} для ${(settings.readyShopIds ?? project.shops.map(shop => shop.id)).length} цехов.`
             : 'Правило готовности настраивается в блоке «Контрольные даты».'}
           <p className="mt-1">Расчётная дата: <strong>{fmt(readyDate)}</strong>.</p>
         </div>
@@ -1079,7 +1190,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
         Автоматическая дата контракта: <strong>{fmt(autoContractDate)}</strong>. Учтено {plannedDays} дн. обучения; режим — {settings.calculationMode === 'sequential' ? 'последовательно' : 'параллельно'}.
         {settings.contractDate && contractGap > 0 && <p className="mt-1 font-bold text-[#a7472e]">Ручная дата позже расчётной на {Math.ceil(contractGap)} дн.</p>}
         {!settings.contractDate && <p className="mt-1">Оставьте ручную дату пустой, чтобы использовать автоматический расчёт.</p>}
-        {settings.readyMilestone && !(settings.readyMilestone === 'mc' ? project.milestones.mc.date : project.milestones.rfsu.date) && <p className="mt-1 font-semibold text-[#a7472e]">Для расчёта даты готовности задайте выбранную контрольную дату {settings.readyMilestone.toUpperCase()}.</p>}
+        {settings.readyMilestone && settings.readyMonthsBefore !== undefined && !readyDate && <p className="mt-1 font-semibold text-[#a7472e]">Для всех выбранных цехов задайте индивидуальные даты отсечки {settings.readyMilestone.toUpperCase()}.</p>}
       </div>
       <div className="flex items-start gap-2 rounded-md bg-[#f5efe4] p-3 text-[10px] leading-relaxed text-[#77766c]"><CircleHelp size={14} className="mt-0.5 shrink-0 text-[#a77e44]" />Изменения в правилах расчёта применяются к отображению плана и сохраняются вместе с проектом.</div>
       <div className="flex justify-end gap-2 pt-1"><button onClick={onClose} className="control h-9 px-3 text-xs font-bold">Отмена</button><button disabled={invalidRange} onClick={() => onSave({ startDate, endDate, settings })} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-50">Применить</button></div>

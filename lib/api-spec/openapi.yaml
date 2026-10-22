@@ -195,6 +195,10 @@ components:
         shopIds:
           type: array
           items: { type: string }
+        shopDates:
+          type: object
+          additionalProperties:
+            type: ["string", "null"]
     TrainingEvent:
       type: object
       required: [id, title, category, duration, unit, shopIds, roleIds, note, status, sortOrder]
@@ -225,6 +229,9 @@ components:
         readyOffsetUnit: { type: string, enum: [days, weeks, months] }
         readyMonthsBefore: { type: integer, minimum: 0 }
         readyMilestone: { type: string, enum: [mc, rfsu] }
+        readyShopIds:
+          type: array
+          items: { type: string }
         dayType: { type: string, enum: [calendar, working] }
         contractDate: { type: ["string", "null"], format: date }
     Project:
