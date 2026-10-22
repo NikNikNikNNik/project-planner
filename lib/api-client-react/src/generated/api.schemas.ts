@@ -154,6 +154,22 @@ export const ProjectSettingsReadyMilestone = {
   rfsu: 'rfsu',
 } as const;
 
+export type ReadyShopRuleMilestone = typeof ReadyShopRuleMilestone[keyof typeof ReadyShopRuleMilestone];
+
+
+export const ReadyShopRuleMilestone = {
+  mc: 'mc',
+  rfsu: 'rfsu',
+} as const;
+
+export interface ReadyShopRule {
+  /** @minimum 0 */
+  monthsBefore: number;
+  milestone: ReadyShopRuleMilestone;
+}
+
+export type ProjectSettingsReadyShopRules = {[key: string]: ReadyShopRule};
+
 export type ProjectSettingsStaffingMode = typeof ProjectSettingsStaffingMode[keyof typeof ProjectSettingsStaffingMode];
 
 
@@ -206,6 +222,7 @@ export interface ProjectSettings {
   readyMonthsBefore?: number;
   readyMilestone?: ProjectSettingsReadyMilestone;
   readyShopIds?: string[];
+  readyShopRules?: ProjectSettingsReadyShopRules;
   staffingMode?: ProjectSettingsStaffingMode;
   salaryMedianResearchDone?: boolean;
   /** @minimum 0 */

@@ -116,6 +116,29 @@ test('readiness and project summary use separate milestone dates for each select
   assert.equal(getProjectReadyDate(plan), '2026-12-31');
 });
 
+test('readiness supports per-shop offsets and milestones with a shared fallback', () => {
+  const base = project();
+  const plan = project({
+    settings: {
+      ...base.settings,
+      readyShopRules: {
+        'shop-a': { monthsBefore: 1, milestone: 'rfsu' },
+      },
+    },
+    milestones: {
+      ...base.milestones,
+      rfsu: {
+        ...base.milestones.rfsu,
+        shopDates: { 'shop-a': '2027-08-31', 'shop-b': '2027-10-31' },
+      },
+    },
+  });
+
+  assert.equal(getShopReadyDate(plan, 'shop-a'), '2027-07-31');
+  assert.equal(getShopReadyDate(plan, 'shop-b'), '2026-12-31');
+  assert.equal(getProjectReadyDate(plan), '2027-07-31');
+});
+
 test('readiness is not assigned to shops outside the configured rule scope', () => {
   const plan = project({ settings: { ...project().settings, readyShopIds: ['shop-a'] } });
   assert.equal(getShopReadyDate(plan, 'shop-b'), null);

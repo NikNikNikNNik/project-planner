@@ -115,11 +115,14 @@ export function getShopReadyDate(project: Project, shopId: string) {
   const { settings, milestones } = project;
   if (settings.readyShopIds && !settings.readyShopIds.includes(shopId)) return null;
 
-  if (settings.readyMilestone && settings.readyMonthsBefore !== undefined) {
-    const milestone = settings.readyMilestone === 'mc' ? milestones.mc : milestones.rfsu;
+  const shopRule = settings.readyShopRules?.[shopId];
+  const readyMilestone = shopRule?.milestone ?? settings.readyMilestone;
+  const readyMonthsBefore = shopRule?.monthsBefore ?? settings.readyMonthsBefore;
+  if (readyMilestone && readyMonthsBefore !== undefined) {
+    const milestone = readyMilestone === 'mc' ? milestones.mc : milestones.rfsu;
     if (!isMilestoneApplicableToShop(milestone, shopId)) return null;
     const anchorDate = getMilestoneDateForShop(milestone, shopId);
-    return anchorDate ? shiftCalendarMonths(anchorDate, -settings.readyMonthsBefore) : null;
+    return anchorDate ? shiftCalendarMonths(anchorDate, -readyMonthsBefore) : null;
   }
 
   return legacyReadyDate(project);

@@ -277,6 +277,10 @@ components:
         readyShopIds:
           type: array
           items: { type: string }
+        readyShopRules:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ReadyShopRule"
         staffingMode: { type: string, enum: [shift, local] }
         salaryMedianResearchDone: { type: boolean }
         salaryMedianResearchMonthsBeforeTraining: { type: integer, minimum: 0 }
@@ -291,6 +295,12 @@ components:
         dayType: { type: string, enum: [calendar, working] }
         contractDate: { type: ["string", "null"], format: date }
         templateDataStatus: { type: string, enum: [unconfirmed, confirmed] }
+    ReadyShopRule:
+      type: object
+      required: [monthsBefore, milestone]
+      properties:
+        monthsBefore: { type: integer, minimum: 0 }
+        milestone: { type: string, enum: [mc, rfsu] }
     Project:
       type: object
       required: [id, title, startDate, endDate, updatedAt, shops, phases, milestones, training, settings]

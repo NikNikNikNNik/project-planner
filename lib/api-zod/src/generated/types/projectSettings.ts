@@ -11,6 +11,7 @@ import type { ProjectSettingsOnboardingUnit } from './projectSettingsOnboardingU
 import type { ProjectSettingsReadyMilestone } from './projectSettingsReadyMilestone';
 import type { ProjectSettingsReadyMode } from './projectSettingsReadyMode';
 import type { ProjectSettingsReadyOffsetUnit } from './projectSettingsReadyOffsetUnit';
+import type { ProjectSettingsReadyShopRules } from './projectSettingsReadyShopRules';
 import type { ProjectSettingsRecruitmentLeadUnit } from './projectSettingsRecruitmentLeadUnit';
 import type { ProjectSettingsStaffingMode } from './projectSettingsStaffingMode';
 import type { ProjectSettingsTemplateDataStatus } from './projectSettingsTemplateDataStatus';
@@ -27,6 +28,7 @@ export interface ProjectSettings {
   readyMonthsBefore?: number;
   readyMilestone?: ProjectSettingsReadyMilestone;
   readyShopIds?: string[];
+  readyShopRules?: ProjectSettingsReadyShopRules;
   staffingMode?: ProjectSettingsStaffingMode;
   salaryMedianResearchDone?: boolean;
   /** @minimum 0 */

@@ -103,6 +103,9 @@ const defaultShopOptions = [
 
 type WorkforceMode = 'shift' | 'local';
 type OnboardingUnit = 'days' | 'weeks';
+type ReadyMilestone = 'mc' | 'rfsu';
+type ReadyShopRule = { monthsBefore: number; milestone: ReadyMilestone };
+type ReadyShopRuleInput = { monthsBefore: string; milestone: ReadyMilestone | '' };
 type StartupAnswers = {
   staffingMode: WorkforceMode;
   salaryMedianResearchDone: boolean;
@@ -120,8 +123,9 @@ function defaultMilestoneDates() {
 function makeProjectInput(
   title: string,
   readyMonthsBefore: number,
-  readyMilestone: 'mc' | 'rfsu',
+  readyMilestone: ReadyMilestone,
   readyShopIds: string[],
+  readyShopRules: Record<string, ReadyShopRule>,
   mcDates: Record<string, string | null>,
   rfsuDates: Record<string, string | null>,
   startupAnswers: StartupAnswers,
@@ -188,7 +192,7 @@ function makeProjectInput(
     training: [],
     settings: {
       calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45,
-      readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, readyShopIds, dayType: 'calendar',
+      readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, readyShopIds, readyShopRules, dayType: 'calendar',
       contractDate: null, ...startupAnswers,
       salaryMedianResearchMonthsBeforeTraining: 18,
       laborMarketResearchMonthsBeforeTraining: 16,
@@ -263,6 +267,7 @@ function Planner() {
   const [newReadyMonths, setNewReadyMonths] = useState('');
   const [newReadyMilestone, setNewReadyMilestone] = useState<'' | 'mc' | 'rfsu'>('');
   const [newReadyShopIds, setNewReadyShopIds] = useState<string[]>([]);
+  const [newReadyShopRules, setNewReadyShopRules] = useState<Record<string, ReadyShopRuleInput>>({});
   const [newMcDates, setNewMcDates] = useState<Record<string, string | null>>({});
   const [newRfsuDates, setNewRfsuDates] = useState<Record<string, string | null>>({});
   const [newMcAllDate, setNewMcAllDate] = useState('');
@@ -347,6 +352,7 @@ function Planner() {
     setNewReadyMonths('');
     setNewReadyMilestone('');
     setNewReadyShopIds(shopIds);
+    setNewReadyShopRules({});
     setNewMcDates(Object.fromEntries(shopIds.map(id => [id, dates.mc])));
     setNewRfsuDates(Object.fromEntries(shopIds.map(id => [id, dates.rfsu])));
     setNewMcAllDate(dates.mc);
@@ -376,6 +382,31 @@ function Planner() {
       setNewRfsuAllDate(allSame ? firstDate : '');
     }
   };
+  const setNewReadyShopRule = (shopId: string, changes: Partial<ReadyShopRuleInput>) => {
+    setNewReadyShopRules(current => ({
+      ...current,
+      [shopId]: {
+        monthsBefore: current[shopId]?.monthsBefore ?? newReadyMonths,
+        milestone: current[shopId]?.milestone ?? newReadyMilestone,
+        ...changes,
+      },
+    }));
+  };
+  const readyRuleComplete = newReadyShopIds.length > 0 && newReadyShopIds.every(shopId => {
+    const shopRule = newReadyShopRules[shopId];
+    const months = shopRule?.monthsBefore ?? newReadyMonths;
+    const milestone = shopRule?.milestone ?? newReadyMilestone;
+    return months !== '' && Number.isInteger(Number(months)) && Number(months) >= 0 &&
+      (milestone === 'mc' || milestone === 'rfsu');
+  });
+  const newMilestoneDatesComplete = defaultShopOptions.every(shop =>
+    !!newMcDates[shop.id] && !!newRfsuDates[shop.id],
+  );
+  const allSelectedShopsHaveReadyRules = newReadyShopIds.length > 0 && newReadyShopIds.every(shopId => {
+    const rule = newReadyShopRules[shopId];
+    return !!rule && rule.monthsBefore !== '' && Number.isInteger(Number(rule.monthsBefore)) &&
+      Number(rule.monthsBefore) >= 0 && (rule.milestone === 'mc' || rule.milestone === 'rfsu');
+  });
   const createProject = (e: FormEvent) => {
     e.preventDefault();
     const title = newTitle.trim();
@@ -384,8 +415,7 @@ function Planner() {
     const allShopIds = defaultShopOptions.map(shop => shop.id);
     const datesComplete = allShopIds.every(shopId => !!newMcDates[shopId] && !!newRfsuDates[shopId]);
     if (
-      !title || newReadyMonths === '' || !Number.isInteger(readyMonths) || readyMonths < 0 ||
-      !newReadyMilestone || newReadyShopIds.length === 0 || !datesComplete ||
+      !title || !readyRuleComplete || !datesComplete ||
       !newStaffingMode || newSalaryMedianResearchDone === null ||
       newLaborMarketResearchDone === null || newHiringStrategyDone === null ||
       newOnboardingDuration === '' || !Number.isInteger(onboardingDuration) || onboardingDuration < 0 ||
@@ -400,8 +430,26 @@ function Planner() {
       onboardingUnit: newOnboardingUnit,
     };
     if (newUsername.trim().length < 3 || newPassword.length < 8) return;
+    const readyShopRules = Object.fromEntries(newReadyShopIds.flatMap(shopId => {
+      const rule = newReadyShopRules[shopId];
+      if (!rule || rule.monthsBefore === '' || !Number.isInteger(Number(rule.monthsBefore)) || Number(rule.monthsBefore) < 0 ||
+        (rule.milestone !== 'mc' && rule.milestone !== 'rfsu')) return [];
+      return [[shopId, { monthsBefore: Number(rule.monthsBefore), milestone: rule.milestone }]];
+    }));
+    const firstEffectiveRule = newReadyShopIds.map(shopId => {
+      const rule = newReadyShopRules[shopId];
+      const monthsBefore = rule?.monthsBefore ?? newReadyMonths;
+      const milestone = rule?.milestone ?? newReadyMilestone;
+      return monthsBefore !== '' && (milestone === 'mc' || milestone === 'rfsu')
+        ? { monthsBefore: Number(monthsBefore), milestone }
+        : null;
+    }).find((rule): rule is ReadyShopRule => rule !== null);
+    const readyMonthsBefore = newReadyMonths !== '' && Number.isInteger(readyMonths) && readyMonths >= 0
+      ? readyMonths
+      : firstEffectiveRule?.monthsBefore ?? 0;
+    const readyMilestone = newReadyMilestone || firstEffectiveRule?.milestone || 'mc';
     createMutation.mutate({ data: {
-      ...makeProjectInput(title, readyMonths, newReadyMilestone, newReadyShopIds, newMcDates, newRfsuDates, startupAnswers),
+      ...makeProjectInput(title, readyMonthsBefore, readyMilestone, newReadyShopIds, readyShopRules, newMcDates, newRfsuDates, startupAnswers),
       access: { username: newUsername.trim(), password: newPassword },
     } }, {
       onSuccess: created => {
@@ -1172,8 +1220,8 @@ function Planner() {
           <div className="flex items-center gap-2"><span className="mono rounded bg-[#e7eee8] px-1.5 py-0.5 text-[9px] font-bold text-[#4e7066]">100%</span><h3 className="text-[10px] font-extrabold">Готовность персонала</h3></div>
           <p className="mt-2 text-[9px] text-[#85877e]">Срок и охват правила готовности.</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Field label="За (месяцев)"><input data-testid="input-new-ready-months" aria-label="Месяцев до готовности 100%" type="number" min="0" step="1" value={newReadyMonths} onChange={e => setNewReadyMonths(e.target.value)} placeholder="Например, 3" className="control h-9 w-full px-2 text-xs" required /></Field>
-            <Field label="До даты"><select data-testid="select-new-ready-milestone" aria-label="Контрольная дата готовности 100%" value={newReadyMilestone} onChange={e => setNewReadyMilestone(e.target.value as '' | 'mc' | 'rfsu')} className="control h-9 w-full px-2 text-xs" required><option value="">Выберите дату</option><option value="mc">MC</option><option value="rfsu">RFSU</option></select></Field>
+            <Field label="За (месяцев)"><input data-testid="input-new-ready-months" aria-label="Месяцев до готовности 100%" type="number" min="0" step="1" value={newReadyMonths} onChange={e => setNewReadyMonths(e.target.value)} placeholder="Например, 3" className="control h-9 w-full px-2 text-xs" required={!allSelectedShopsHaveReadyRules} /></Field>
+            <Field label="До даты"><select data-testid="select-new-ready-milestone" aria-label="Контрольная дата готовности 100%" value={newReadyMilestone} onChange={e => setNewReadyMilestone(e.target.value as '' | 'mc' | 'rfsu')} className="control h-9 w-full px-2 text-xs" required={!allSelectedShopsHaveReadyRules}><option value="">Выберите дату</option><option value="mc">MC</option><option value="rfsu">RFSU</option></select></Field>
           </div>
           <div className="mt-3">
             <p className="mb-1.5 text-[9px] font-bold text-[#777b78]">Правило применяется к:</p>
@@ -1184,12 +1232,36 @@ function Planner() {
               </label>)}
             </div>
           </div>
+          <details className="mt-3 border-t border-[#eee9df] pt-2">
+            <summary className="cursor-pointer text-[9px] font-bold text-[#65716d]">Задать срок отдельно для каждого цеха</summary>
+            <p className="mt-1 text-[9px] leading-relaxed text-[#85877e]">Для выбранных цехов укажите свои месяцы и отсечку. Если оставить общий срок, он будет применён ко всем выбранным цехам.</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {defaultShopOptions.map(shop => {
+                const rule = newReadyShopRules[shop.id];
+                const selected = newReadyShopIds.includes(shop.id);
+                return <section key={shop.id} className={`min-w-0 rounded border p-2 ${selected ? 'border-[#e2ddd2]' : 'border-[#ece9e1] opacity-60'}`}>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="truncate text-[9px] font-bold">{shop.name}</span>
+                    {rule && <button type="button" onClick={() => setNewReadyShopRules(current => {
+                      const next = { ...current };
+                      delete next[shop.id];
+                      return next;
+                    })} className="shrink-0 text-[8px] font-semibold text-[#bd4c2b] hover:underline">Общий срок</button>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Field label="За (месяцев)"><input data-testid={`input-new-ready-months-${shop.id}`} aria-label={`${shop.name}: месяцев до готовности 100%`} type="number" min="0" step="1" value={rule?.monthsBefore ?? newReadyMonths} onChange={event => setNewReadyShopRule(shop.id, { monthsBefore: event.target.value })} placeholder="Общий срок" disabled={!selected} className="control h-8 w-full px-2 text-[10px] disabled:cursor-not-allowed" /></Field>
+                    <Field label="До даты"><select data-testid={`select-new-ready-milestone-${shop.id}`} aria-label={`${shop.name}: контрольная дата готовности 100%`} value={rule?.milestone ?? newReadyMilestone} onChange={event => setNewReadyShopRule(shop.id, { milestone: event.target.value as '' | ReadyMilestone })} disabled={!selected} className="control h-8 w-full px-2 text-[10px] disabled:cursor-not-allowed"><option value="">Общая отсечка</option><option value="mc">MC</option><option value="rfsu">RFSU</option></select></Field>
+                  </div>
+                </section>;
+              })}
+            </div>
+          </details>
         </section>
         <ShopMilestoneDateFields code="MC" title="Механическая готовность" allDate={newMcAllDate} dates={newMcDates} onAllDateChange={date => setAllNewMilestoneDates('mc', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('mc', shopId, date)} />
         <ShopMilestoneDateFields code="RFSU" title="Готовность к пуску" allDate={newRfsuAllDate} dates={newRfsuDates} onAllDateChange={date => setAllNewMilestoneDates('rfsu', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('rfsu', shopId, date)} />
       </div>
-      <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Для MC и RFSU задайте общую дату или отдельные даты по цехам. Будут созданы четыре площадки, базовые роли и стартовые этапы. Предзаполненные даты, этапы и численность ролей — шаблонные, их нужно проверить перед использованием.</div>
-      <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal('startup')} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Назад</button><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !startupAnswersComplete || !newReadyMonths || !newReadyMilestone || !newReadyShopIds.length || newUsername.trim().length < 3 || newPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
+       <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Для готовности персонала задайте общий срок или индивидуальные сроки по цехам. Для MC и RFSU укажите общую дату или отдельные даты по цехам. Будут созданы четыре площадки, базовые роли и стартовые этапы. Предзаполненные даты, этапы и численность ролей — шаблонные, их нужно проверить перед использованием.</div>
+       <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal('startup')} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Назад</button><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !startupAnswersComplete || !readyRuleComplete || !newMilestoneDatesComplete || !newReadyShopIds.length || newUsername.trim().length < 3 || newPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
     </form></Modal>}
     {modal === 'access' && activeSummary && <Modal title={`Вход в проект «${activeSummary.title}»`} subtitle="Введите данные доступа, чтобы открыть план." onClose={closeAccessPrompt}>
       <form onSubmit={event => void submitProjectAccess(event)} className="space-y-4 p-6">
@@ -1329,12 +1401,35 @@ function MilestoneCard({ code, title, date, shopDates, note, shops, shopIds, onC
 function ReadyMilestoneCard({ project, onChange }: { project: Project; onChange: (settings: Partial<Project['settings']>) => void }) {
   const { settings, milestones, shops } = project;
   const [months, setMonths] = useState(settings.readyMonthsBefore === undefined ? '' : String(settings.readyMonthsBefore));
+  const [shopMonths, setShopMonths] = useState<Record<string, string>>({});
   useEffect(() => {
     setMonths(settings.readyMonthsBefore === undefined ? '' : String(settings.readyMonthsBefore));
   }, [settings.readyMonthsBefore]);
+  useEffect(() => {
+    setShopMonths(Object.fromEntries(shops.map(shop => [
+      shop.id,
+      String(settings.readyShopRules?.[shop.id]?.monthsBefore ?? settings.readyMonthsBefore ?? ''),
+    ])));
+  }, [settings.readyShopRules, settings.readyMonthsBefore, shops]);
   const readyDate = getProjectReadyDate({ ...project, settings });
   const selectedShopIds = settings.readyShopIds ?? shops.map(shop => shop.id);
-  const hasNewRule = settings.readyMonthsBefore !== undefined && !!settings.readyMilestone && selectedShopIds.length > 0;
+  const hasNewRule = selectedShopIds.length > 0 && selectedShopIds.every(shopId => {
+    const rule = settings.readyShopRules?.[shopId];
+    return (rule?.monthsBefore ?? settings.readyMonthsBefore) !== undefined &&
+      !!(rule?.milestone ?? settings.readyMilestone);
+  });
+  const updateShopRule = (shopId: string, changes: Partial<ReadyShopRule>) => {
+    if (settings.readyMonthsBefore === undefined || !settings.readyMilestone) return;
+    const baseRule: ReadyShopRule = { monthsBefore: settings.readyMonthsBefore, milestone: settings.readyMilestone };
+    const nextRule = { ...(settings.readyShopRules?.[shopId] ?? baseRule), ...changes };
+    const rules = { ...settings.readyShopRules };
+    if (nextRule.monthsBefore === baseRule.monthsBefore && nextRule.milestone === baseRule.milestone) {
+      delete rules[shopId];
+    } else {
+      rules[shopId] = nextRule;
+    }
+    onChange({ readyShopRules: rules });
+  };
   return <div className="border-t border-[#eee9df] px-4 py-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
@@ -1397,6 +1492,58 @@ function ReadyMilestoneCard({ project, onChange }: { project: Project; onChange:
         })}
       </div>
     </div>
+    <details className="mt-3 border-t border-[#eee9df] pt-2">
+      <summary className="cursor-pointer text-[9px] font-bold text-[#65716d]">Задать срок отдельно для каждого цеха</summary>
+      <p className="mt-1 text-[9px] text-[#85877e]">По умолчанию используется общий срок выше. Индивидуальные значения заменяют его только для выбранного цеха.</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {shops.filter(shop => selectedShopIds.includes(shop.id)).map(shop => {
+          const rule = settings.readyShopRules?.[shop.id];
+          const individualEnabled = settings.readyMonthsBefore !== undefined && !!settings.readyMilestone;
+          return <section key={shop.id} className="min-w-0 rounded border border-[#e2ddd2] p-2">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="truncate text-[9px] font-bold">{shop.name}</span>
+              {rule && <button type="button" onClick={() => {
+                setShopMonths(current => ({ ...current, [shop.id]: String(settings.readyMonthsBefore ?? '') }));
+                const rules = { ...settings.readyShopRules };
+                delete rules[shop.id];
+                onChange({ readyShopRules: rules });
+              }} className="shrink-0 text-[8px] font-semibold text-[#bd4c2b] hover:underline">Общий срок</button>}
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <Field label="За (месяцев)"><input
+                data-testid={`input-ready-shop-months-${shop.id}`}
+                aria-label={`${shop.name}: месяцев до готовности 100%`}
+                type="number"
+                min="0"
+                step="1"
+                value={shopMonths[shop.id] ?? String(rule?.monthsBefore ?? settings.readyMonthsBefore ?? '')}
+                onChange={event => {
+                  const value = event.target.value;
+                  setShopMonths(current => ({ ...current, [shop.id]: value }));
+                  if (/^\d+$/.test(value)) updateShopRule(shop.id, { monthsBefore: Number(value) });
+                }}
+                disabled={!individualEnabled}
+                className="control h-8 w-full px-2 text-[10px] disabled:cursor-not-allowed"
+              /></Field>
+              <Field label="До даты"><select
+                data-testid={`select-ready-shop-milestone-${shop.id}`}
+                aria-label={`${shop.name}: контрольная дата готовности 100%`}
+                value={rule?.milestone ?? settings.readyMilestone ?? ''}
+                onChange={event => {
+                  const value = event.target.value;
+                  if (value === 'mc' || value === 'rfsu') updateShopRule(shop.id, { milestone: value });
+                }}
+                disabled={!individualEnabled}
+                className="control h-8 w-full px-2 text-[10px] disabled:cursor-not-allowed"
+              >
+                <option value="mc">MC</option>
+                <option value="rfsu">RFSU</option>
+              </select></Field>
+            </div>
+          </section>;
+        })}
+      </div>
+    </details>
     {!hasNewRule && <p className="mt-2 text-[9px] text-[#a7472e]">Заполните срок и выберите MC или RFSU, чтобы настроить новую формулу.</p>}
     {hasNewRule && !readyDate && <p className="mt-2 text-[9px] text-[#a7472e]">Для всех выбранных цехов должны быть заданы даты выбранной отсечки.</p>}
   </div>;

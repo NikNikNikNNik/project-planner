@@ -46,6 +46,8 @@ export const createProjectBodyOneSettingsDaysBeforeMcMin = 0;
 
 export const createProjectBodyOneSettingsReadyMonthsBeforeMin = 0;
 
+export const createProjectBodyOneSettingsReadyShopRulesMonthsBeforeMin = 0;
+
 export const createProjectBodyOneSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
 
 export const createProjectBodyOneSettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
@@ -125,6 +127,10 @@ export const CreateProjectBody = zod.object({
   "readyMonthsBefore": zod.number().int().min(createProjectBodyOneSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "readyShopRules": zod.record(zod.string(), zod.object({
+  "monthsBefore": zod.number().int().min(createProjectBodyOneSettingsReadyShopRulesMonthsBeforeMin),
+  "milestone": zod.enum(['mc', 'rfsu'])
+})).optional(),
   "staffingMode": zod.enum(['shift', 'local']).optional(),
   "salaryMedianResearchDone": zod.boolean().optional(),
   "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(createProjectBodyOneSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
@@ -157,6 +163,8 @@ export const createProjectResponseTrainingItemCostUsdMin = 0;
 export const createProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const createProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const createProjectResponseSettingsReadyShopRulesMonthsBeforeMin = 0;
 
 export const createProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
 
@@ -233,6 +241,10 @@ export const CreateProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(createProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "readyShopRules": zod.record(zod.string(), zod.object({
+  "monthsBefore": zod.number().int().min(createProjectResponseSettingsReadyShopRulesMonthsBeforeMin),
+  "milestone": zod.enum(['mc', 'rfsu'])
+})).optional(),
   "staffingMode": zod.enum(['shift', 'local']).optional(),
   "salaryMedianResearchDone": zod.boolean().optional(),
   "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(createProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
@@ -268,6 +280,8 @@ export const getProjectResponseTrainingItemCostUsdMin = 0;
 export const getProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const getProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const getProjectResponseSettingsReadyShopRulesMonthsBeforeMin = 0;
 
 export const getProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
 
@@ -344,6 +358,10 @@ export const GetProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(getProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "readyShopRules": zod.record(zod.string(), zod.object({
+  "monthsBefore": zod.number().int().min(getProjectResponseSettingsReadyShopRulesMonthsBeforeMin),
+  "milestone": zod.enum(['mc', 'rfsu'])
+})).optional(),
   "staffingMode": zod.enum(['shift', 'local']).optional(),
   "salaryMedianResearchDone": zod.boolean().optional(),
   "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(getProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
@@ -379,6 +397,8 @@ export const updateProjectBodyTrainingItemCostUsdMin = 0;
 export const updateProjectBodySettingsDaysBeforeMcMin = 0;
 
 export const updateProjectBodySettingsReadyMonthsBeforeMin = 0;
+
+export const updateProjectBodySettingsReadyShopRulesMonthsBeforeMin = 0;
 
 export const updateProjectBodySettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
 
@@ -453,6 +473,10 @@ export const UpdateProjectBody = zod.object({
   "readyMonthsBefore": zod.number().int().min(updateProjectBodySettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "readyShopRules": zod.record(zod.string(), zod.object({
+  "monthsBefore": zod.number().int().min(updateProjectBodySettingsReadyShopRulesMonthsBeforeMin),
+  "milestone": zod.enum(['mc', 'rfsu'])
+})).optional(),
   "staffingMode": zod.enum(['shift', 'local']).optional(),
   "salaryMedianResearchDone": zod.boolean().optional(),
   "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(updateProjectBodySettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
@@ -480,6 +504,8 @@ export const updateProjectResponseTrainingItemCostUsdMin = 0;
 export const updateProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const updateProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const updateProjectResponseSettingsReadyShopRulesMonthsBeforeMin = 0;
 
 export const updateProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
 
@@ -556,6 +582,10 @@ export const UpdateProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(updateProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "readyShopRules": zod.record(zod.string(), zod.object({
+  "monthsBefore": zod.number().int().min(updateProjectResponseSettingsReadyShopRulesMonthsBeforeMin),
+  "milestone": zod.enum(['mc', 'rfsu'])
+})).optional(),
   "staffingMode": zod.enum(['shift', 'local']).optional(),
   "salaryMedianResearchDone": zod.boolean().optional(),
   "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(updateProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
@@ -614,6 +644,8 @@ export const copyProjectResponseTrainingItemCostUsdMin = 0;
 export const copyProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const copyProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const copyProjectResponseSettingsReadyShopRulesMonthsBeforeMin = 0;
 
 export const copyProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
 
@@ -690,6 +722,10 @@ export const CopyProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(copyProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "readyShopRules": zod.record(zod.string(), zod.object({
+  "monthsBefore": zod.number().int().min(copyProjectResponseSettingsReadyShopRulesMonthsBeforeMin),
+  "milestone": zod.enum(['mc', 'rfsu'])
+})).optional(),
   "staffingMode": zod.enum(['shift', 'local']).optional(),
   "salaryMedianResearchDone": zod.boolean().optional(),
   "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(copyProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
