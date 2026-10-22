@@ -985,7 +985,7 @@ function Planner() {
                                   </Tooltip.Content>
                                 </Tooltip.Portal>
                               </Tooltip.Root>}
-                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Старт рекрут." color="#b77a3e" roleSpecific labelSide="left" />}
+                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Старт рекрут." color="#b77a3e" roleSpecific labelSide="right" labelOverlapWith="На контракт" />}
                               {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" roleSpecific />}
                               {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {trainingLanes.map(item => <Tooltip.Root key={item.event.id} delayDuration={220}>
@@ -1330,8 +1330,40 @@ function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
   const x = (rawDateDiff(start, now) / totalDays) * 100;
   return x >= 0 && x <= 100 ? <div className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55" style={{ left: `${x}%` }}><span className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" /></div> : null;
 }
-function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right' }) {
+function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide, labelOverlapWith }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right'; labelOverlapWith?: string }) {
   const pointerDown = useRef(false);
+  const lineRef = useRef<HTMLDivElement>(null);
+  const [labelOverlaps, setLabelOverlaps] = useState(false);
+  useEffect(() => {
+    if (!roleSpecific || !labelOverlapWith) {
+      setLabelOverlaps(false);
+      return;
+    }
+    const line = lineRef.current;
+    const grid = line?.parentElement;
+    const ownLabel = line?.querySelector<HTMLElement>('[data-milestone-text]');
+    if (!grid || !ownLabel) return;
+    const counterpart = Array.from(grid.querySelectorAll<HTMLElement>('[data-milestone-line]'))
+      .find(element => element.dataset.milestoneLine === labelOverlapWith);
+    const otherLabel = counterpart?.querySelector<HTMLElement>('[data-milestone-text]');
+    if (!otherLabel) {
+      setLabelOverlaps(false);
+      return;
+    }
+    const measureOverlap = () => {
+      const ownRect = ownLabel.getBoundingClientRect();
+      const otherRect = otherLabel.getBoundingClientRect();
+      const overlaps = ownRect.left < otherRect.right && ownRect.right > otherRect.left;
+      setLabelOverlaps(current => current === overlaps ? current : overlaps);
+    };
+    measureOverlap();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measureOverlap);
+    observer.observe(grid);
+    observer.observe(ownLabel);
+    observer.observe(otherLabel);
+    return () => observer.disconnect();
+  }, [date, labelOverlapWith, roleSpecific, start, totalDays]);
   const x = (rawDateDiff(start, date) / totalDays) * 100;
   if (x < 0 || x > 100) return null;
   const fullLabel = label === 'На контракт'
@@ -1342,10 +1374,10 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
         ? 'Профессия обучена и готова'
         : label;
   const labelPosition = labelPlacement ?? (roleSpecific
-    ? label === 'Готов' ? 'bottom-0.5' : 'top-0.5'
+    ? label === 'Готов' || (label === 'Старт рекрут.' && labelOverlaps) ? 'bottom-0.5' : 'top-0.5'
     : label === 'Готов 100%' ? 'top-[20px]' : 'top-0.5');
   const markerPosition = roleSpecific && label === 'Готов' ? 'bottom-[7px]' : 'top-[7px]';
-  return <div className={`pointer-events-none absolute bottom-0 top-0 ${roleSpecific ? 'z-[4]' : 'z-[2]'}`} style={{ left: `${x}%` }} title={`${fullLabel} · ${fmt(date)}`}>
+  return <div ref={lineRef} data-milestone-line={label} className={`pointer-events-none absolute bottom-0 top-0 ${roleSpecific ? 'z-[4]' : 'z-[2]'}`} style={{ left: `${x}%` }} title={`${fullLabel} · ${fmt(date)}`}>
     <span className="absolute bottom-0 top-0 border-l border-dashed" style={{ borderColor: color }} />
     <button
       type="button"
@@ -1371,7 +1403,7 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
       onPointerUp={() => { pointerDown.current = false; }}
       onPointerCancel={() => { pointerDown.current = false; }}
     />
-    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`} style={{ background: color }}>{label}</span>
+    <span data-milestone-text className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`} style={{ background: color }}>{label}</span>
     <span className="sr-only">{fullLabel}: {fmt(date)}</span>
   </div>;
 }
