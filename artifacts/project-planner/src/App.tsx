@@ -995,7 +995,7 @@ function Planner() {
                                   </Tooltip.Content>
                                 </Tooltip.Portal>
                               </Tooltip.Root>}
-                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Рекрутинг" color="#b77a3e" roleSpecific labelSide="right" labelPlacement={recruitmentLabelOverlapsContract ? 'bottom-0.5' : undefined} />}
+                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Рекрутинг" color="#b77a3e" roleSpecific labelOrientation="vertical" labelPlacement={recruitmentLabelOverlapsContract ? 'bottom-0.5' : undefined} />}
                               {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Контракт" color="#8060a8" roleSpecific labelOrientation="vertical" />}
                               {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {trainingLanes.map(item => <Tooltip.Root key={item.event.id} delayDuration={220}>
@@ -1381,7 +1381,7 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
       onPointerUp={() => { pointerDown.current = false; }}
       onPointerCancel={() => { pointerDown.current = false; }}
     />
-    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelOrientation === 'vertical' ? 'left-5 top-0.5 origin-top-left rotate-90' : `${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`}`} style={{ background: color }}>{label}</span>
+    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelOrientation === 'vertical' ? labelPlacement === 'bottom-0.5' ? 'left-[-32px] bottom-0.5 origin-bottom-left -rotate-90' : 'right-5 top-0.5 origin-top-right -rotate-90' : `${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`}`} style={{ background: color }}>{label}</span>
     <span className="sr-only">{fullLabel}: {fmt(date)}</span>
   </div>;
 }
