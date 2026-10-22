@@ -28,6 +28,7 @@ export * from './projectSettingsReadyMode';
 export * from './projectSettingsReadyOffsetUnit';
 export * from './projectSettingsRecruitmentLeadUnit';
 export * from './projectSettingsStaffingMode';
+export * from './projectSettingsTemplateDataStatus';
 export * from './projectSummary';
 export * from './role';
 export * from './roleGroup';

@@ -68,3 +68,28 @@ test('workbook recruitment date follows a month-based project setting', async ()
     excelDateSerial(2027, 4, 10),
   );
 });
+
+test('workbook warns that template dates and role counts are unconfirmed', async () => {
+  const workbook = await createRecruitmentWorkbook({
+    ...project(),
+    settings: { ...project().settings, templateDataStatus: 'unconfirmed' },
+  });
+  assert.ok(workbook);
+  assert.match(String(workbook.getWorksheet('По площадкам')?.getCell('A3').value), /ПРЕДВАРИТЕЛЬНЫЕ ДАННЫЕ/);
+  assert.match(String(workbook.getWorksheet('Сводка по профессиям')?.getCell('A3').value), /не подтверждены пользователем/);
+  assert.match(String(workbook.getWorksheet('По площадкам')?.getCell('A3').value), /месяц = 30 календарных дней/);
+});
+
+test('workbook distinguishes missing provenance from user confirmation', async () => {
+  const plan = project();
+  const legacyWorkbook = await createRecruitmentWorkbook(plan);
+  assert.ok(legacyWorkbook);
+  assert.match(String(legacyWorkbook.getWorksheet('По площадкам')?.getCell('A3').value), /ИСТОЧНИК НЕ ОТСЛЕЖИВАЛСЯ/);
+
+  const confirmedWorkbook = await createRecruitmentWorkbook({
+    ...plan,
+    settings: { ...plan.settings, templateDataStatus: 'confirmed' },
+  });
+  assert.ok(confirmedWorkbook);
+  assert.match(String(confirmedWorkbook.getWorksheet('По площадкам')?.getCell('A3').value), /отмечены проверенными пользователем/);
+});

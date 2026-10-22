@@ -13,6 +13,7 @@ import type { ProjectSettingsReadyMode } from './projectSettingsReadyMode';
 import type { ProjectSettingsReadyOffsetUnit } from './projectSettingsReadyOffsetUnit';
 import type { ProjectSettingsRecruitmentLeadUnit } from './projectSettingsRecruitmentLeadUnit';
 import type { ProjectSettingsStaffingMode } from './projectSettingsStaffingMode';
+import type { ProjectSettingsTemplateDataStatus } from './projectSettingsTemplateDataStatus';
 
 export interface ProjectSettings {
   calculationMode: ProjectSettingsCalculationMode;
@@ -45,4 +46,5 @@ export interface ProjectSettings {
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: Date | null;
+  templateDataStatus?: ProjectSettingsTemplateDataStatus;
 }

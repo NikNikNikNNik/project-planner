@@ -290,6 +290,7 @@ components:
         onboardingUnit: { type: string, enum: [days, weeks] }
         dayType: { type: string, enum: [calendar, working] }
         contractDate: { type: ["string", "null"], format: date }
+        templateDataStatus: { type: string, enum: [unconfirmed, confirmed] }
     Project:
       type: object
       required: [id, title, startDate, endDate, updatedAt, shops, phases, milestones, training, settings]

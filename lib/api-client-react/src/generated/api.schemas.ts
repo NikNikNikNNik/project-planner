@@ -186,6 +186,14 @@ export const ProjectSettingsDayType = {
   working: 'working',
 } as const;
 
+export type ProjectSettingsTemplateDataStatus = typeof ProjectSettingsTemplateDataStatus[keyof typeof ProjectSettingsTemplateDataStatus];
+
+
+export const ProjectSettingsTemplateDataStatus = {
+  unconfirmed: 'unconfirmed',
+  confirmed: 'confirmed',
+} as const;
+
 export interface ProjectSettings {
   calculationMode: ProjectSettingsCalculationMode;
   readyMode: ProjectSettingsReadyMode;
@@ -217,6 +225,7 @@ export interface ProjectSettings {
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: string | null;
+  templateDataStatus?: ProjectSettingsTemplateDataStatus;
 }
 
 export type ProjectMilestones = {

@@ -137,7 +137,8 @@ export const CreateProjectBody = zod.object({
   "onboardingDuration": zod.number().int().min(createProjectBodyOneSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
-  "contractDate": zod.coerce.date().nullable()
+  "contractDate": zod.coerce.date().nullable(),
+  "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
 }).and(zod.object({
   "access": zod.object({
@@ -244,7 +245,8 @@ export const CreateProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(createProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
-  "contractDate": zod.coerce.date().nullable()
+  "contractDate": zod.coerce.date().nullable(),
+  "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
 })
 
@@ -354,7 +356,8 @@ export const GetProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(getProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
-  "contractDate": zod.coerce.date().nullable()
+  "contractDate": zod.coerce.date().nullable(),
+  "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
 })
 
@@ -462,7 +465,8 @@ export const UpdateProjectBody = zod.object({
   "onboardingDuration": zod.number().int().min(updateProjectBodySettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
-  "contractDate": zod.coerce.date().nullable()
+  "contractDate": zod.coerce.date().nullable(),
+  "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
 })
 
@@ -564,7 +568,8 @@ export const UpdateProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(updateProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
-  "contractDate": zod.coerce.date().nullable()
+  "contractDate": zod.coerce.date().nullable(),
+  "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
 })
 
@@ -697,7 +702,8 @@ export const CopyProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(copyProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
-  "contractDate": zod.coerce.date().nullable()
+  "contractDate": zod.coerce.date().nullable(),
+  "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
 })
 

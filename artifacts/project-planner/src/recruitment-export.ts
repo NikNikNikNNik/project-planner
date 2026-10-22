@@ -107,6 +107,14 @@ export async function createRecruitmentWorkbook(project: Project) {
     fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF293640' } },
     alignment: { vertical: 'middle' as const, wrapText: true },
   };
+  const provenanceNotice = project.settings.templateDataStatus === 'confirmed'
+    ? 'Исходные данные отмечены проверенными пользователем; это не означает независимую экспертизу.'
+    : project.settings.templateDataStatus === 'unconfirmed'
+      ? 'ПРЕДВАРИТЕЛЬНЫЕ ДАННЫЕ: даты, этапы и численность ролей из шаблона не подтверждены пользователем.'
+      : 'ИСТОЧНИК НЕ ОТСЛЕЖИВАЛСЯ: проверьте даты, этапы и численность ролей до использования этой выгрузки.';
+  const durationConversion = project.settings.dayType === 'working'
+    ? 'Условный пересчёт обучения: неделя = 5 рабочих дней, месяц = 22 рабочих дня.'
+    : 'Условный пересчёт обучения: неделя = 7 календарных дней, месяц = 30 календарных дней.';
   const addIntro = (sheet: ExcelJS.Worksheet, width: number, note: string) => {
     sheet.addRow([`План набора персонала · ${project.title}`]);
     sheet.mergeCells(1, 1, 1, width);
@@ -115,11 +123,21 @@ export async function createRecruitmentWorkbook(project: Project) {
     sheet.addRow([`Сформировано: ${new Date().toLocaleDateString('ru-RU')} · Готовность персонала: ${formatDate(readyDate)}`]);
     sheet.mergeCells(2, 1, 2, width);
     sheet.getCell('A2').font = { size: 10, color: { argb: 'FF777B78' } };
-    sheet.addRow([note]);
+    sheet.addRow([`${provenanceNotice} ${note} ${durationConversion}`]);
     sheet.mergeCells(3, 1, 3, width);
-    sheet.getCell('A3').font = { italic: true, size: 9, color: { argb: 'FF777B78' } };
+    sheet.getCell('A3').font = {
+      italic: true,
+      bold: project.settings.templateDataStatus !== 'confirmed',
+      size: 9,
+      color: { argb: project.settings.templateDataStatus === 'confirmed' ? 'FF49685B' : 'FF805C32' },
+    };
     sheet.getCell('A3').alignment = { wrapText: true };
-    sheet.getRow(3).height = 36;
+    sheet.getCell('A3').fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: project.settings.templateDataStatus === 'confirmed' ? 'FFEEF4ED' : 'FFFFF4E4' },
+    };
+    sheet.getRow(3).height = 60;
   };
 
   const byPlant = workbook.addWorksheet('По площадкам');

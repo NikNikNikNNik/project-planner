@@ -195,6 +195,7 @@ function makeProjectInput(
       hiringStrategyMonthsBeforeTraining: 12,
       recruitmentLeadValue: recruitmentLeadDefaults.value,
       recruitmentLeadUnit: recruitmentLeadDefaults.unit,
+      templateDataStatus: 'unconfirmed',
     },
   };
 }
@@ -221,10 +222,10 @@ function Planner() {
   const summaryQuery = useGetPlanningSummary();
   const projects = projectsQuery.data ?? [];
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [accessGrantedId, setAccessGrantedId] = useState<string | null>(null);
-  const activeSummary = projects.find(p => p.id === activeId) ?? projects[0];
-  const activeProjectIndex = Math.max(0, projects.findIndex(p => p.id === activeSummary?.id));
-  const projectId = activeId ?? activeSummary?.id ?? '';
+  const activeSummary = projects.find(p => p.id === activeId);
+  const projectId = activeId ?? '';
   const projectQuery = useGetProject(projectId, { query: { enabled: !!projectId && accessGrantedId === projectId, queryKey: getGetProjectQueryKey(projectId) } });
   const createMutation = useCreateProject();
   const deleteMutation = useDeleteProject();
@@ -316,7 +317,20 @@ function Planner() {
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [draft, projectId]);
 
-  const patch = (changes: Partial<Project>) => setDraft(current => current ? { ...current, ...changes } : current);
+  const patch = (changes: Partial<Project>) => setDraft(current => {
+    if (!current) return current;
+    const sourceFieldsChanged = ['startDate', 'endDate', 'shops', 'phases', 'milestones']
+      .some(key => Object.prototype.hasOwnProperty.call(changes, key));
+    return {
+      ...current,
+      ...changes,
+      settings: {
+        ...current.settings,
+        ...(changes.settings ?? {}),
+        ...(sourceFieldsChanged ? { templateDataStatus: 'unconfirmed' as const } : {}),
+      },
+    };
+  });
   const notify = (text: string) => { setToast(text); setTimeout(() => setToast(''), 2600); };
   const openNewProject = () => {
     const dates = defaultMilestoneDates();
@@ -416,6 +430,13 @@ function Planner() {
       setAccessError('Не удалось завершить предыдущий сеанс. Обновите страницу и попробуйте снова.');
     });
   };
+  const closeAccessPrompt = () => {
+    setModal(null);
+    if (accessGrantedId !== activeId) {
+      setActiveId(null);
+      setAccessGrantedId(null);
+    }
+  };
   const submitProjectAccess = async (event: FormEvent) => {
     event.preventDefault();
     if (!projectId || !accessReady || accessSubmitting) return;
@@ -437,15 +458,6 @@ function Planner() {
     } finally {
       setAccessSubmitting(false);
     }
-  };
-  useEffect(() => {
-    if (!activeId && projects.length) openProject(projects[0].id);
-  }, [activeId, projects]);
-  const moveProject = (direction: -1 | 1) => {
-    if (!projects.length) return;
-    const currentIndex = projects.findIndex(item => item.id === activeSummary?.id);
-    const startIndex = currentIndex < 0 ? 0 : currentIndex;
-    openProject(projects[(startIndex + direction + projects.length) % projects.length].id);
   };
   const copyCurrent = (event: FormEvent) => {
     event.preventDefault();
@@ -726,20 +738,24 @@ function Planner() {
             <div className="min-w-0"><div className="truncate text-[8px] font-bold uppercase tracking-[.1em] text-[#85877e]">Текущий проект</div><div title={project?.title ?? 'Нет выбранного проекта'} className="mt-1 truncate text-xs font-bold">{project?.title ?? 'Нет выбранного проекта'}</div></div>
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#eee9dd] text-[#65716d]"><Factory size={15} /></div>
           </div>
-          <section className="panel flex min-h-[68px] min-w-0 items-center gap-2 rounded-lg px-2.5 py-2">
+           <section className="panel relative z-20 flex min-h-[68px] min-w-0 items-center gap-2 rounded-lg px-2.5 py-2">
             <div className="min-w-0 flex-1">
               <div className="mb-1 flex items-center justify-between gap-1">
                 <span className="truncate text-[8px] font-bold uppercase tracking-[.1em] text-[#85877e]">Портфель проектов</span>
                 <span className="mono shrink-0 text-[9px] text-[#898a82]">{projects.length}</span>
               </div>
-              {projects.length ? <div className="grid grid-cols-[24px_minmax(0,1fr)_24px] items-center gap-1">
-                <button type="button" data-testid="button-portfolio-previous" aria-label="Предыдущий проект" title="Предыдущий проект" disabled={projects.length < 2} onClick={() => moveProject(-1)} className="control flex h-7 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"><ArrowLeft size={12} /></button>
-                <button type="button" data-testid="button-portfolio-current" aria-label={`Открыть проект ${activeSummary?.title ?? ''}`} onClick={() => activeSummary && openProject(activeSummary.id)} className="control flex h-7 min-w-0 items-center justify-between gap-1 px-2 text-[10px]">
-                  <span className="truncate">{activeSummary?.title ?? 'Выберите проект'}</span>
-                  <span className="mono shrink-0 text-[8px] text-[#85877e]">{activeProjectIndex + 1}/{projects.length}</span>
-                </button>
-                <button type="button" data-testid="button-portfolio-next" aria-label="Следующий проект" title="Следующий проект" disabled={projects.length < 2} onClick={() => moveProject(1)} className="control flex h-7 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"><ArrowRight size={12} /></button>
-              </div> : <button type="button" onClick={openNewProject} className="truncate text-left text-[10px] font-semibold text-[#bd4c2b] hover:underline">Добавить первый проект</button>}
+               {projects.length ? <div className="relative">
+                 <button type="button" data-testid="button-portfolio-toggle" aria-expanded={portfolioOpen} aria-haspopup="listbox" onClick={() => setPortfolioOpen(open => !open)} className="control flex h-7 w-full min-w-0 items-center justify-between gap-2 px-2 text-left text-[10px]">
+                   <span className="truncate">{activeSummary?.title ?? 'Выберите проект'}</span>
+                   <ChevronDown size={12} className={`shrink-0 transition-transform ${portfolioOpen ? 'rotate-180' : ''}`} />
+                 </button>
+                 {portfolioOpen && <div role="listbox" aria-label="Проекты портфеля" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 min-w-[220px] overflow-y-auto overscroll-contain rounded-lg border border-[#ded9ce] bg-[#fbfaf5] p-1 shadow-xl">
+                   {projects.map(item => <button key={item.id} type="button" role="option" aria-selected={item.id === activeId} data-testid={`button-open-project-${item.id}`} onClick={() => { setPortfolioOpen(false); openProject(item.id); }} className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-[10px] hover:bg-[#f1eee6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]">
+                     <span className="min-w-0 truncate font-semibold">{item.title}</span>
+                     <span className="shrink-0 text-[9px] font-bold text-[#bd4c2b]">Войти</span>
+                   </button>)}
+                 </div>}
+               </div> : <button type="button" onClick={openNewProject} className="truncate text-left text-[10px] font-semibold text-[#bd4c2b] hover:underline">Добавить первый проект</button>}
             </div>
             <button type="button" aria-label="Добавить проект" title="Добавить проект" onClick={openNewProject} className="btn-quiet flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#bd4c2b]"><Plus size={15} /></button>
           </section>
@@ -749,12 +765,29 @@ function Planner() {
 
           <section className="min-w-0">
             {!projects.length ? <div className="panel flex min-h-[450px] flex-col items-center justify-center rounded-xl px-6 text-center"><div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#f0e7db] text-[#bd4c2b]"><Factory size={25} /></div><h2 className="display-font text-2xl">Начните с проекта</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Создайте план строительства — затем синхронизируйте этапы четырёх цехов, контрольные даты и подготовку команд.</p><button className="btn-primary mt-5 rounded-md px-4 py-2.5 text-sm font-bold" onClick={openNewProject}>Создать проект</button></div> :
+            !projectId ? <div className="panel flex min-h-[390px] flex-col items-center justify-center rounded-xl px-6 text-center"><h2 className="display-font text-xl">Выберите проект</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Откройте портфель проектов и нажмите «Войти» у нужного проекта. Запрос логина и пароля появится только после этого.</p></div> :
             projectQuery.isLoading || !project ? <div className="panel min-h-[390px] animate-pulse rounded-xl p-6"><div className="h-7 w-64 rounded bg-[#e9e5db]" /><div className="mt-7 h-40 rounded-lg bg-[#f0ede5]" /><div className="mt-5 h-24 rounded-lg bg-[#f0ede5]" /></div> :
             <>
               {warningMessages.length > 0 && <div role="alert" className="mb-4 rounded-lg border border-[#e7c9ac] bg-[#fbf2e6] px-4 py-3 text-[11px] text-[#805c32]">
                 <div className="mb-1 flex items-center gap-1.5 font-extrabold"><AlertTriangle size={13} />Проверьте план</div>
                 {warningMessages.map((message, index) => <p key={`${message}-${index}`} className="ml-5 mt-0.5 leading-relaxed">{message}</p>)}
               </div>}
+              {project.settings.templateDataStatus === 'confirmed'
+                ? <div role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-[#cddbd1] bg-[#eef4ed] px-4 py-3 text-[10px] text-[#49685b]">
+                    <Check size={14} className="mt-0.5 shrink-0" />
+                    <p><strong>Исходные данные отмечены проверенными пользователем.</strong> Это не внешняя экспертиза; расчётные сроки по-прежнему зависят от настроек и правил приложения.</p>
+                  </div>
+                : <div role="alert" className="mb-4 flex flex-col gap-2 rounded-lg border border-[#e7c9ac] bg-[#fbf2e6] px-4 py-3 text-[10px] text-[#805c32] sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <p><strong>{project.settings.templateDataStatus === 'unconfirmed' ? 'Предварительные данные шаблона не подтверждены.' : 'Источник части данных не отслеживался.'}</strong> Проверьте контрольные даты, этапы и численность ролей перед использованием плана или выгрузки.</p>
+                    </div>
+                    <button type="button" onClick={() => {
+                      if (window.confirm('Вы проверили даты MC/RFSU, этапы и численность ролей по данным проекта? Эта отметка означает только проверку пользователем, а не независимую экспертизу.')) {
+                        patch({ settings: { ...project.settings, templateDataStatus: 'confirmed' } });
+                      }
+                    }} className="shrink-0 rounded border border-[#d8b99d] bg-[#fffaf1] px-2.5 py-1.5 text-[9px] font-bold hover:bg-white">Отметить проверенными</button>
+                  </div>}
               <div className="panel mb-4 rounded-xl">
                 <div className="flex flex-col justify-between gap-4 border-b border-[#e5e1d7] px-5 py-4 md:flex-row md:items-center">
                   <div className="min-w-0">
@@ -931,6 +964,8 @@ function Planner() {
                                         <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[item.event.category]} · {item.event.duration} {item.event.unit === 'days' ? 'дн.' : item.event.unit === 'weeks' ? 'нед.' : 'мес.'} · {item.durationDays} дн. · {fmt(item.startDate)} — {fmt(item.endDate)}{item.event.costUsd !== undefined ? ` · ${formatUsd(item.event.costUsd)}` : ''}</p>
                                       </li>)}
                                     </ul>
+                                    {rolePlan.schedule.some(item => item.approximate) && <p className="mt-2 border-t border-[#e9e5dc] pt-2 text-[9px] text-[#9a6830]">Положение предварительное: дата готовности и контракта не заданы, расписание отсчитано от начала проекта.</p>}
+                                    {rolePlan.schedule.some(item => item.event.unit !== 'days') && <p className="mt-1 text-[9px] text-[#777b76]">Пересчёт условный: неделя = 5 рабочих/7 календарных дней, месяц = 22 рабочих/30 календарных дней.</p>}
                                     <Tooltip.Arrow className="fill-[#fbfaf5]" />
                                   </Tooltip.Content>
                                 </Tooltip.Portal>
@@ -976,6 +1011,7 @@ function Planner() {
                                   <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] leading-relaxed">
                                     <dt className="text-[#81847c]">Категория</dt><dd className="font-semibold">{categoryNames[event.category]}</dd>
                                     <dt className="text-[#81847c]">Длительность</dt><dd>{event.duration} {unitName} · {item.durationDays} {project.settings.dayType === 'working' ? 'рабочих' : 'календарных'} дней</dd>
+                                    {event.unit !== 'days' && <><dt className="text-[#81847c]">Условный пересчёт</dt><dd>{event.unit === 'weeks' ? (project.settings.dayType === 'working' ? '1 неделя = 5 рабочих дней' : '1 неделя = 7 календарных дней') : (project.settings.dayType === 'working' ? '1 месяц = 22 рабочих дня' : '1 месяц = 30 календарных дней')}</dd></>}
                                     {event.costUsd !== undefined && <><dt className="text-[#81847c]">Стоимость</dt><dd>{formatUsd(event.costUsd)}</dd></>}
                                     <dt className="text-[#81847c]">Период</dt><dd>{fmt(item.startDate)} — {fmt(item.endDate)}</dd>
                                     <dt className="text-[#81847c]">Статус</dt><dd>{statusNames[event.status]}</dd>
@@ -1152,10 +1188,10 @@ function Planner() {
         <ShopMilestoneDateFields code="MC" title="Механическая готовность" allDate={newMcAllDate} dates={newMcDates} onAllDateChange={date => setAllNewMilestoneDates('mc', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('mc', shopId, date)} />
         <ShopMilestoneDateFields code="RFSU" title="Готовность к пуску" allDate={newRfsuAllDate} dates={newRfsuDates} onAllDateChange={date => setAllNewMilestoneDates('rfsu', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('rfsu', shopId, date)} />
       </div>
-      <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Для MC и RFSU задайте общую дату или отдельные даты по цехам. Будут созданы четыре площадки, базовые роли и стартовые этапы.</div>
+      <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Для MC и RFSU задайте общую дату или отдельные даты по цехам. Будут созданы четыре площадки, базовые роли и стартовые этапы. Предзаполненные даты, этапы и численность ролей — шаблонные, их нужно проверить перед использованием.</div>
       <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal('startup')} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Назад</button><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !startupAnswersComplete || !newReadyMonths || !newReadyMilestone || !newReadyShopIds.length || newUsername.trim().length < 3 || newPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
     </form></Modal>}
-    {modal === 'access' && activeSummary && <Modal title={`Вход в проект «${activeSummary.title}»`} subtitle="Введите данные доступа, чтобы открыть план." onClose={() => setModal(null)}>
+    {modal === 'access' && activeSummary && <Modal title={`Вход в проект «${activeSummary.title}»`} subtitle="Введите данные доступа, чтобы открыть план." onClose={closeAccessPrompt}>
       <form onSubmit={event => void submitProjectAccess(event)} className="space-y-4 p-6">
         <Field label="Логин">
           <input data-testid="input-project-access-username" autoComplete="username" value={accessUsername} onChange={event => setAccessUsername(event.target.value)} minLength={3} maxLength={64} className="control h-10 w-full px-3 text-xs" required />
@@ -1167,7 +1203,7 @@ function Planner() {
         {accessError && <p role="alert" className="text-xs font-semibold text-[#a84732]">{accessError}</p>}
         {!accessReady && !accessError && <p className="text-xs text-[#777b78]">Завершение предыдущего сеанса…</p>}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button>
+          <button type="button" onClick={closeAccessPrompt} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button>
           <button disabled={!accessReady || accessSubmitting || accessUsername.trim().length < 3 || accessPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{accessSubmitting ? 'Проверка…' : 'Войти'}</button>
         </div>
       </form>
