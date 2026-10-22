@@ -163,6 +163,7 @@ components:
         name: { type: string }
         group: { type: string, enum: [itr, workers] }
         visible: { type: boolean }
+        headcount: { type: integer, minimum: 0 }
     Shop:
       type: object
       required: [id, name, roles]
@@ -203,6 +204,7 @@ components:
         category: { type: string, enum: [mandatory, technology, internship, lvcc, other] }
         duration: { type: number, minimum: 0 }
         unit: { type: string, enum: [days, weeks, months] }
+        costUsd: { type: number, minimum: 0 }
         shopIds:
           type: array
           items: { type: string }

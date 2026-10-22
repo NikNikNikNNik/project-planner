@@ -32,6 +32,8 @@ export interface Role {
   name: string;
   group: RoleGroup;
   visible: boolean;
+  /** @minimum 0 */
+  headcount?: number;
 }
 
 export interface Shop {
@@ -105,6 +107,8 @@ export interface TrainingEvent {
   /** @minimum 0 */
   duration: number;
   unit: TrainingEventUnit;
+  /** @minimum 0 */
+  costUsd?: number;
   shopIds: string[];
   roleIds: string[];
   /** @nullable */

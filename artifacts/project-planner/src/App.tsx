@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   useCopyProject,
   useCreateProject,
@@ -17,8 +18,9 @@ import {
   type TrainingEvent,
   type Role,
 } from '@workspace/api-client-react';
+import { downloadRecruitmentWorkbook } from './recruitment-export';
 import {
-  Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check,
+  Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, FileSpreadsheet,
   ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Factory, Flag,
   Layers3, MoreHorizontal, Pencil, Plus, Save, Settings2, ShieldCheck, SlidersHorizontal,
   Trash2, Users, ZoomIn, ZoomOut,
@@ -26,6 +28,7 @@ import {
 
 const queryClient = new QueryClient();
 const fmt = (date?: string | null) => date ? new Date(`${date.slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Не задано';
+const formatUsd = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const shiftDate = (value: string, days: number) => { const d = new Date(`${value}T12:00:00`); d.setDate(d.getDate() + days); return iso(d); };
 const shiftWorkingDays = (value: string, days: number) => {
@@ -51,6 +54,13 @@ const phaseColors: Record<string, string> = {
   construction: '#3978a8', precommissioning: '#d39432',
   commissioning: '#8060a8', operation: '#54805e',
 };
+const trainingColors: Record<TrainingEvent['category'], string> = {
+  mandatory: '#4f6d8a',
+  technology: '#397d64',
+  internship: '#a56e2c',
+  lvcc: '#77548f',
+  other: '#747b7d',
+};
 const categoryNames: Record<string, string> = {
   mandatory: 'Обязательное обучение', technology: 'Технологическое обучение',
   internship: 'Стажировки', lvcc: 'LVCC', other: 'Другие обучения',
@@ -74,6 +84,59 @@ function totalTrainingDays(events: TrainingEvent[], calculationMode: 'sequential
     ? Math.max(0, ...durations)
     : durations.reduce((sum, duration) => sum + duration, 0);
 }
+
+type ScheduledTraining = {
+  event: TrainingEvent;
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  approximate: boolean;
+};
+
+function scheduleTrainingTimeline(project: Project, readyDate: string | null): ScheduledTraining[] {
+  const sorted = [...project.training].sort((a, b) => a.sortOrder - b.sortOrder);
+  const dayType = project.settings.dayType;
+  const anchor = readyDate ?? project.settings.contractDate ?? project.startDate;
+  const approximate = !readyDate && !project.settings.contractDate;
+  const shift = (date: string, days: number) =>
+    dayType === 'working' ? shiftWorkingDays(date, days) : shiftDate(date, days);
+
+  if (project.settings.calculationMode === 'parallel') {
+    return sorted.flatMap(event => {
+      const durationDays = trainingDays(event, dayType);
+      if (durationDays <= 0) return [];
+      const startDate = readyDate ? shift(anchor, -durationDays) : anchor;
+      const endDate = readyDate ?? shift(anchor, durationDays);
+      return [{ event, startDate, endDate, durationDays, approximate }];
+    });
+  }
+
+  const scheduled = new Map<string, ScheduledTraining>();
+  if (readyDate) {
+    let cursor = anchor;
+    for (const event of [...sorted].reverse()) {
+      const durationDays = trainingDays(event, dayType);
+      if (durationDays <= 0) continue;
+      const startDate = shift(cursor, -durationDays);
+      scheduled.set(event.id, { event, startDate, endDate: cursor, durationDays, approximate });
+      cursor = startDate;
+    }
+  } else {
+    let cursor = anchor;
+    for (const event of sorted) {
+      const durationDays = trainingDays(event, dayType);
+      if (durationDays <= 0) continue;
+      const endDate = shift(cursor, durationDays);
+      scheduled.set(event.id, { event, startDate: cursor, endDate, durationDays, approximate });
+      cursor = endDate;
+    }
+  }
+  return sorted.flatMap(event => {
+    const item = scheduled.get(event.id);
+    return item ? [item] : [];
+  });
+}
+
 function offsetInDays(amount: number, unit: 'days' | 'weeks' | 'months', dayType: 'calendar' | 'working') {
   const factor = unit === 'days' ? 1 : unit === 'weeks' ? (dayType === 'working' ? 5 : 7) : (dayType === 'working' ? 22 : 30);
   return Math.ceil(amount * factor);
@@ -111,8 +174,8 @@ function makeProjectInput(title: string): ProjectInput {
       id,
       name: template.name,
       roles: [
-        ...template.itr.map((name, roleIndex) => ({ id: `${id}-itr-${roleIndex}`, name, group: 'itr' as const, visible: true })),
-        ...template.workers.map((name, roleIndex) => ({ id: `${id}-worker-${roleIndex}`, name, group: 'workers' as const, visible: true })),
+        ...template.itr.map((name, roleIndex) => ({ id: `${id}-itr-${roleIndex}`, name, group: 'itr' as const, visible: true, headcount: 1 })),
+        ...template.workers.map((name, roleIndex) => ({ id: `${id}-worker-${roleIndex}`, name, group: 'workers' as const, visible: true, headcount: 1 })),
       ],
     };
   });
@@ -166,6 +229,7 @@ function Planner() {
   const [newTitle, setNewTitle] = useState('');
   const [timelineStart, setTimelineStart] = useState('');
   const [timelineEnd, setTimelineEnd] = useState('');
+  const [expandedShopIds, setExpandedShopIds] = useState<string[]>([]);
   const [zoom, setZoom] = useState(1);
   const [toast, setToast] = useState('');
   const initializedId = useRef('');
@@ -186,6 +250,7 @@ function Planner() {
       savedJson.current = JSON.stringify(data);
       setTimelineStart(data.startDate);
       setTimelineEnd(data.endDate);
+      setExpandedShopIds([]);
       setZoom(1);
     }
   }, [projectQuery.data]);
@@ -293,6 +358,16 @@ function Planner() {
           : shiftDate(project.milestones.mc.date, -offsetInDays(project.settings.daysBeforeMc, project.settings.readyOffsetUnit ?? 'days', project.settings.dayType)))
         : null
     : null;
+  const trainingTimeline = useMemo(
+    () => project ? scheduleTrainingTimeline(project, staffReadyDate) : [],
+    [project, staffReadyDate],
+  );
+  useEffect(() => {
+    if (!project || !trainingTimeline.length) return;
+    const dates = trainingTimeline.flatMap(item => [item.startDate, item.endDate]).sort();
+    setTimelineStart(current => !current || dates[0] < current ? dates[0] : current);
+    setTimelineEnd(current => !current || dates[dates.length - 1] > current ? dates[dates.length - 1] : current);
+  }, [project?.id, trainingTimeline]);
   const plannedTrainingDays = project
     ? totalTrainingDays(project.training, project.settings.calculationMode, project.settings.dayType)
     : 0;
@@ -511,6 +586,7 @@ function Planner() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button data-testid="button-add-phase" onClick={() => { setEditingPhase(null); setModal('phase'); }} className="control inline-flex h-8 items-center gap-1.5 px-2.5 text-[11px] font-bold text-[#4b5959]"><Plus size={13} />Этап</button>
                     <button data-testid="button-add-training" onClick={() => { setEditingTraining(null); setModal('training'); }} className="control inline-flex h-8 items-center gap-1.5 px-2.5 text-[11px] font-bold text-[#4b5959]"><Users size={13} />Обучение</button>
+                    <button onClick={() => { void downloadRecruitmentWorkbook(project, staffReadyDate).catch(error => { console.error('Failed to build recruitment workbook', error); window.alert('Не удалось сформировать Excel-файл. Повторите попытку.'); }); }} className="btn-primary inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[10px] font-bold sm:text-[11px]"><FileSpreadsheet size={14} />Сформировать план набора персонала</button>
                     <button aria-label="Настройки расчёта" onClick={() => setModal('settings')} className="control flex h-8 w-8 items-center justify-center text-[#65716d]"><Settings2 size={14} /></button>
                     <IconButton label="Копировать проект" onClick={copyCurrent}><Copy size={14} /></IconButton>
                     <IconButton label="Удалить проект" onClick={removeProject} danger><Trash2 size={14} /></IconButton>
@@ -555,12 +631,14 @@ function Planner() {
                 >
                   <div className="min-w-[760px]">
                     <div className="flex border-b border-[#e7e2d8] bg-[#f7f5ee]">
-                      <div className="sticky left-0 z-20 w-[184px] shrink-0 bg-[#f7f5ee] px-4 py-2 text-[9px] font-bold uppercase tracking-[.14em] text-[#83867f]">Площадка / этап</div>
+                      <div className="sticky left-0 z-20 w-[184px] shrink-0 bg-[#f7f5ee] px-4 py-2 text-[9px] font-bold uppercase tracking-[.14em] text-[#83867f]">Площадка / этап / обучение</div>
                       <div className="timeline-grid relative h-8 flex-1 overflow-hidden">{months.map((m, i) => <span key={`${m.label}-${i}`} className="absolute top-2 -translate-x-1/2 whitespace-nowrap text-[9px] font-semibold uppercase text-[#888a80]" style={{ left: `${m.left}%` }}>{m.label}</span>)}</div>
                     </div>
                     {project.shops.map((shop, shopIndex) => {
                       const phases = project.phases.filter(p => p.shopIds.includes(shop.id));
-                      const visibleRoles = shop.roles.filter(r => r.visible).length;
+                      const plannedRoles = shop.roles.filter(role => role.visible);
+                      const visibleRoles = plannedRoles.length;
+                      const rolesExpanded = expandedShopIds.includes(shop.id);
                       const mcReady = project.milestones.mc.date && (!project.milestones.mc.shopIds.length || project.milestones.mc.shopIds.includes(shop.id));
                       return <div key={shop.id} className="border-b border-[#ece8df] last:border-0">
                         <div className="flex min-h-[75px]">
@@ -569,7 +647,13 @@ function Planner() {
                             <div className="ml-8 mt-1 max-w-[168px] text-[8px] leading-[1.25] text-[#85877e]">
                               <p className="truncate" title={`ИТР: ${shop.roles.filter(r => r.visible && r.group === 'itr').map(r => r.name).join(', ')}`}>ИТР · {shop.roles.filter(r => r.visible && r.group === 'itr').map(r => r.name).join(', ') || '—'}</p>
                               <p className="truncate" title={`Рабочие: ${shop.roles.filter(r => r.visible && r.group === 'workers').map(r => r.name).join(', ')}`}>Рабочие · {shop.roles.filter(r => r.visible && r.group === 'workers').map(r => r.name).join(', ') || '—'}</p>
-                              <button onClick={() => setModal('roles')} className="mt-0.5 font-semibold text-[#85877e] hover:text-[#bd4c2b]">{visibleRoles} в плане · изменить роли</button>
+                              <div className="mt-0.5 flex items-center gap-1 font-semibold">
+                                <span className="text-[#85877e]">{visibleRoles} в плане</span>
+                                <button type="button" aria-label={`Изменить роли цеха ${shop.name}`} title="Изменить роли" onClick={() => setModal('roles')} className="flex h-5 w-5 items-center justify-center rounded text-[#8b8d83] hover:bg-[#efece3] hover:text-[#bd4c2b]"><Pencil size={10} /></button>
+                                <button type="button" aria-label={`${rolesExpanded ? 'Свернуть' : 'Раскрыть'} процессы цеха ${shop.name}`} aria-expanded={rolesExpanded} title={rolesExpanded ? 'Свернуть процессы' : 'Раскрыть процессы'} onClick={() => setExpandedShopIds(current => current.includes(shop.id) ? current.filter(id => id !== shop.id) : [...current, shop.id])} className="flex h-5 w-5 items-center justify-center rounded text-[#68746f] hover:bg-[#e8eee8]">
+                                  <ChevronDown size={13} className={`transition-transform ${rolesExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div className="timeline-grid relative min-w-0 flex-1 py-2.5">
@@ -580,28 +664,114 @@ function Planner() {
                               return <button key={phase.id} onPointerDown={event => startPhaseDrag(event, phase)} onPointerMove={movePhaseDrag} onPointerUp={() => { phaseDragRef.current = null; }} onPointerCancel={() => { phaseDragRef.current = null; }} onClick={() => { if (phaseMovedRef.current) { phaseMovedRef.current = false; return; } setEditingPhase(phase); setModal('phase'); }} title={`${phase.name}: ${fmt(phase.startDate)} — ${fmt(phase.endDate)}. Перетащите полосу, чтобы сдвинуть; края — чтобы изменить даты.`} className="phase-bar absolute flex h-[18px] touch-none items-center overflow-hidden rounded-[4px] px-2 text-left text-[9px] font-bold text-white shadow-sm cursor-grab active:cursor-grabbing" style={{ top: `${10 + i * 22}px`, left: `${left}%`, width: `${barWidth}%`, backgroundColor: phaseColors[phase.type] ?? '#587c79' }}><span aria-hidden="true" className="absolute left-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /><span className="truncate">{phase.name}</span><span aria-hidden="true" className="absolute right-0 top-0 h-full w-[5px] cursor-ew-resize bg-black/10" /></button>;
                             })}
                             {contractDate && <MilestoneLine date={contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" />}
-                            {staffReadyDate && <MilestoneLine date={staffReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" />}
+                            {staffReadyDate && <MilestoneLine date={staffReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов 100%" color="#315f59" />}
                             {mcReady && project.milestones.mc.date && <MilestoneLine date={project.milestones.mc.date} start={timelineStart || project.startDate} totalDays={totalDays} label="MC" color="#bd4c2b" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, date } } }); }} />}
                             {project.milestones.rfsu.date && (!project.milestones.rfsu.shopIds.length || project.milestones.rfsu.shopIds.includes(shop.id)) && <MilestoneLine date={project.milestones.rfsu.date} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, date } } }); }} />}
                           </div>
                         </div>
                         {phases.length === 0 && <div className="border-t border-dashed border-[#ece8df] py-1 pl-[200px] text-[9px] text-[#a3a195]">Для площадки нет назначенных этапов</div>}
+                        {rolesExpanded && (plannedRoles.length ? plannedRoles.map(role => {
+                          const roleEvents = project.training.filter(event =>
+                            event.shopIds.includes(shop.id) && (!event.roleIds.length || event.roleIds.includes(role.id)),
+                          );
+                          const roleSchedule = scheduleTrainingTimeline({ ...project, training: roleEvents }, staffReadyDate);
+                          const roleTrainingDays = totalTrainingDays(roleEvents, project.settings.calculationMode, project.settings.dayType);
+                          const roleStartDate = roleSchedule.length ? roleSchedule.reduce((earliest, item) => item.startDate < earliest ? item.startDate : earliest, roleSchedule[0].startDate) : null;
+                          const roleEndDate = roleSchedule.length ? roleSchedule.reduce((latest, item) => item.endDate > latest ? item.endDate : latest, roleSchedule[0].endDate) : null;
+                          const roleReadyDate = roleEndDate ?? staffReadyDate;
+                          const left = roleStartDate ? position(roleStartDate) : 0;
+                          const barWidth = roleStartDate && roleEndDate ? width(roleStartDate, roleEndDate) : 0;
+                          return <div key={role.id} className="flex min-h-[42px] border-t border-[#ece8df] bg-[#fdfcf8]">
+                            <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fdfcf8] pl-10 pr-3">
+                              <span className="truncate text-[9px] font-semibold text-[#4f5b58]" title={`${role.name} · ${shop.name}`}>{role.name}</span>
+                              <span className="text-[8px] text-[#85877e]">{roleTrainingDays} дн. обучения</span>
+                            </div>
+                            <div className="timeline-grid relative h-[42px] min-w-0 flex-1">
+                              <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
+                              {roleReadyDate && <MilestoneLine date={roleReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
+                              {roleSchedule.length > 0 && roleStartDate && roleEndDate && <Tooltip.Root delayDuration={220}>
+                                <Tooltip.Trigger asChild>
+                                  <button type="button" aria-label={`Обучение роли ${role.name}: ${roleTrainingDays} дней`} className="absolute top-[19px] z-[3] flex h-[16px] min-w-0 items-center overflow-hidden rounded-[4px] bg-[#557d6e] px-2 text-left text-[9px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]" style={{ left: `${left}%`, width: `${barWidth}%` }}>
+                                    <span className="truncate">{roleTrainingDays} дн. обучения</span>
+                                  </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                  <Tooltip.Content side="top" align="start" sideOffset={6} collisionPadding={12} className="z-[100] w-[320px] max-w-[88vw] rounded-lg border border-[#d9d4ca] bg-[#fbfaf5] p-3 text-[#293640] shadow-xl">
+                                    <h4 className="mb-2 text-[11px] font-extrabold">Обучения: {role.name}</h4>
+                                    <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
+                                      {roleSchedule.map(item => <li key={item.event.id} className="border-t border-[#e9e5dc] pt-2 first:border-0 first:pt-0">
+                                        <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-bold">{item.event.title}</span><span className="shrink-0 text-[9px] text-[#777b76]">{statusNames[item.event.status]}</span></div>
+                                        <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[item.event.category]} · {item.event.duration} {item.event.unit === 'days' ? 'дн.' : item.event.unit === 'weeks' ? 'нед.' : 'мес.'} · {item.durationDays} дн. · {fmt(item.startDate)} — {fmt(item.endDate)}{item.event.costUsd !== undefined ? ` · ${formatUsd(item.event.costUsd)}` : ''}</p>
+                                      </li>)}
+                                    </ul>
+                                    <Tooltip.Arrow className="fill-[#fbfaf5]" />
+                                  </Tooltip.Content>
+                                </Tooltip.Portal>
+                              </Tooltip.Root>}
+                            </div>
+                          </div>;
+                        }) : <div className="flex min-h-[38px] items-center border-t border-[#ece8df] pl-[200px] text-[9px] text-[#99978c]">В плане нет активных ролей для этого цеха.</div>)}
                       </div>;
                     })}
                     <div className="border-t border-[#e7e2d8] bg-[#faf8f2]">
-                        <div className="flex min-h-10">
+                      <div className="flex min-h-10 border-b border-[#ece8df]">
                         <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 items-center gap-2 bg-[#faf8f2] px-4"><span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#e8e6f0] text-[#696182]"><Users size={13} /></span><span className="text-[10px] font-bold">Подготовка кадров</span></div>
                         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-[9px] text-[#726b82]">
                           <span>{project.training.length} мероприятий</span><span>·</span><span>{plannedTrainingDays} {project.settings.dayType === 'working' ? 'рабочих' : 'календарных'} дней</span>
                           <span className="hidden sm:inline">· Длительности учитываются {project.settings.calculationMode === 'sequential' ? 'последовательно' : 'параллельно'}</span>
                         </div>
                       </div>
+                      {trainingTimeline.map(item => {
+                        const event = item.event;
+                        const eventShops = project.shops.filter(shop => event.shopIds.includes(shop.id));
+                        const roleLabels = project.shops.flatMap(shop => shop.roles
+                          .filter(role => event.roleIds.includes(role.id))
+                          .map(role => `${shop.name}: ${role.name}`));
+                        const left = position(item.startDate);
+                        const barWidth = Math.max(.8, position(item.endDate) - left);
+                        const unitName = event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.';
+                        return <div key={event.id} className="flex min-h-[38px] border-b border-[#ece8df] last:border-0">
+                          <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#faf8f2] px-4" title={`${event.title} · ${categoryNames[event.category]}`}>
+                            <div className="flex min-w-0 items-center gap-1.5"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: trainingColors[event.category] }} /><span className="truncate text-[9px] font-semibold text-[#4f5656]">{event.title}</span></div>
+                            <span className="ml-3.5 truncate text-[8px] text-[#8b897f]">{categoryNames[event.category]}</span>
+                          </div>
+                          <div className="timeline-grid relative h-[38px] min-w-0 flex-1">
+                            <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
+                            <Tooltip.Root delayDuration={220}>
+                              <Tooltip.Trigger asChild>
+                                <button type="button" aria-label={`Обучение ${event.title}, ${event.duration} ${unitName}`} className="training-bar absolute top-[10px] z-[3] flex h-[18px] min-w-0 items-center overflow-hidden rounded-[4px] px-1.5 text-left text-[9px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]" style={{ left: `${left}%`, width: `${barWidth}%`, backgroundColor: trainingColors[event.category] }}>
+                                  <span className="truncate">{event.title}</span>
+                                </button>
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Content side="top" align="start" sideOffset={6} collisionPadding={12} className="z-[100] w-[320px] max-w-[88vw] rounded-lg border border-[#d9d4ca] bg-[#fbfaf5] p-3 text-[#293640] shadow-xl">
+                                  <h3 className="mb-2 text-xs font-extrabold">{event.title}</h3>
+                                  <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] leading-relaxed">
+                                    <dt className="text-[#81847c]">Категория</dt><dd className="font-semibold">{categoryNames[event.category]}</dd>
+                                    <dt className="text-[#81847c]">Длительность</dt><dd>{event.duration} {unitName} · {item.durationDays} {project.settings.dayType === 'working' ? 'рабочих' : 'календарных'} дней</dd>
+                                    {event.costUsd !== undefined && <><dt className="text-[#81847c]">Стоимость</dt><dd>{formatUsd(event.costUsd)}</dd></>}
+                                    <dt className="text-[#81847c]">Период</dt><dd>{fmt(item.startDate)} — {fmt(item.endDate)}</dd>
+                                    <dt className="text-[#81847c]">Статус</dt><dd>{statusNames[event.status]}</dd>
+                                    <dt className="text-[#81847c]">Площадки</dt><dd>{eventShops.map(shop => shop.name).join(', ') || 'Не указаны'}</dd>
+                                    <dt className="text-[#81847c]">Роли</dt><dd>{event.roleIds.length ? roleLabels.join('; ') || 'Указанные роли не найдены' : 'Все роли выбранных площадок'}</dd>
+                                  </dl>
+                                  {event.note && <p className="mt-2 whitespace-pre-wrap border-t border-[#e9e5dc] pt-2 text-[10px] leading-relaxed"><span className="font-bold">Примечание: </span>{event.note}</p>}
+                                  {item.approximate && <p className="mt-2 border-t border-[#e9e5dc] pt-2 text-[9px] text-[#9a6830]">Положение предварительное: дата готовности и дата контракта не заданы, поэтому план отсчитан от начала проекта.</p>}
+                                  <Tooltip.Arrow className="fill-[#fbfaf5]" />
+                                </Tooltip.Content>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
+                          </div>
+                        </div>;
+                      })}
+                      {trainingTimeline.length === 0 && <div className="flex min-h-[38px] items-center pl-[200px] text-[9px] text-[#99978c]">Добавьте обучение с длительностью больше нуля, чтобы увидеть его на шкале.</div>}
                     </div>
                   </div>
                 </div>}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e5e1d7] px-4 py-3 md:px-5">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] text-[#737a77]">
                     <Legend swatch={phaseColors.construction} label="Стройка" /><Legend swatch={phaseColors.precommissioning} label="ПредПНР" /><Legend swatch={phaseColors.commissioning} label="ПНР" /><Legend swatch={phaseColors.operation} label="Эксплуатация" /><Legend diamond="#bd4c2b" label="MC / RFSU" /><Legend dot="#315f59" label="Готовность персонала" />
+                    {trainingCategories.map(category => <Legend key={category} swatch={trainingColors[category]} label={categoryNames[category]} />)}
                   </div>
                   <button onClick={() => setModal('settings')} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#6c7570] hover:text-[#bd4c2b]"><SlidersHorizontal size={12} />Настроить расчёт</button>
                 </div>
@@ -622,7 +792,7 @@ function Planner() {
                         </summary>
                         {events.length > 0 ? events.map((event, eventIndex) => <div key={event.id} className="flex items-center gap-2 border-t border-[#eee9df] px-4 py-2.5">
                           <span className={`h-2 w-2 shrink-0 rounded-full ${event.status === 'completed' ? 'bg-[#587c70]' : event.status === 'in_progress' ? 'bg-[#c58b3a]' : 'bg-[#8b7ba3]'}`} />
-                          <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, project.settings.dayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}</div></button>
+                          <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, project.settings.dayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}{event.costUsd !== undefined && <> · {formatUsd(event.costUsd)}</>}</div></button>
                           <span className="hidden rounded-full bg-[#efede5] px-2 py-1 text-[9px] font-semibold text-[#707772] sm:inline-flex">{statusNames[event.status]}</span>
                           <IconButton label="Переместить выше" onClick={() => moveTraining(event.id, -1)}><ArrowLeft size={12} className="-rotate-90" /></IconButton>
                           <IconButton label="Переместить ниже" onClick={() => moveTraining(event.id, 1)}><ArrowRight size={12} className="rotate-90" /></IconButton>
@@ -651,7 +821,20 @@ function Planner() {
     {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)}><form onSubmit={createProject} className="p-6"><label className="mb-2 block text-xs font-bold text-[#5e6866]">Название проекта</label><input autoFocus data-testid="input-new-project-title" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Например, Модернизация установки № 2" className="control h-11 w-full px-3 text-sm" required /><div className="mt-3 rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f7773]">Будут созданы четыре производственные площадки, базовые роли и стартовые этапы. Их можно скорректировать в плане.</div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div></form></Modal>}
     {modal === 'phase' && project && <PhaseModal phase={editingPhase} project={project} onClose={() => setModal(null)} onSave={phase => { const phases = editingPhase ? project.phases.map(p => p.id === phase.id ? phase : p) : [...project.phases, phase]; expandTimeline([phase.startDate, phase.endDate]); patch({ phases }); setModal(null); }} onDelete={() => { if (editingPhase && window.confirm('Удалить этот этап из плана?')) { patch({ phases: project.phases.filter(p => p.id !== editingPhase.id) }); setModal(null); } }} />}
     {modal === 'training' && project && <TrainingModal event={editingTraining} project={project} onClose={() => setModal(null)} onSave={event => { const training = editingTraining ? project.training.map(t => t.id === event.id ? event : t) : [...project.training, { ...event, sortOrder: project.training.length }]; patch({ training }); setModal(null); }} onDelete={() => { if (editingTraining && window.confirm('Удалить событие обучения?')) { patch({ training: project.training.filter(t => t.id !== editingTraining.id) }); setModal(null); } }} />}
-    {modal === 'roles' && project && <RolesModal project={project} onClose={() => setModal(null)} onSave={shops => { patch({ shops }); setModal(null); }} />}
+    {modal === 'roles' && project && <RolesModal
+      project={project}
+      onClose={() => setModal(null)}
+      onSave={shops => { patch({ shops }); setModal(null); }}
+      onAddTraining={(event, shopId, role) => {
+        const shops = project.shops.map(shop => shop.id !== shopId ? shop : {
+          ...shop,
+          roles: shop.roles.some(item => item.id === role.id)
+            ? shop.roles.map(item => item.id === role.id ? role : item)
+            : [...shop.roles, role],
+        });
+        patch({ shops, training: [...project.training, { ...event, sortOrder: project.training.length }] });
+      }}
+    />}
     {modal === 'settings' && project && <SettingsModal project={project} onClose={() => setModal(null)} onSave={changes => { patch(changes); if (changes.startDate) setTimelineStart(changes.startDate); if (changes.endDate) setTimelineEnd(changes.endDate); setModal(null); }} />}
     {toast && <div className="fixed bottom-5 right-5 z-[90] flex items-center gap-2 rounded-lg bg-[#293640] px-4 py-3 text-xs font-semibold text-white shadow-xl"><Check size={14} className="text-[#9bb7a7]" />{toast}</div>}
   </div>;
@@ -675,16 +858,19 @@ function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
   const x = (rawDateDiff(start, now) / totalDays) * 100;
   return x >= 0 && x <= 100 ? <div className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55" style={{ left: `${x}%` }}><span className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" /></div> : null;
 }
-function MilestoneLine({ date, start, totalDays, label, color, onMove }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void }) {
+function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean }) {
   const pointerDown = useRef(false);
   const x = (rawDateDiff(start, date) / totalDays) * 100;
   if (x < 0 || x > 100) return null;
   const fullLabel = label === 'На контракт'
     ? 'Персонал взят на контракт'
-    : label === 'Готов'
-      ? 'Персонал обучен и готов'
-      : label;
-  return <div className="pointer-events-none absolute bottom-0 top-0 z-[2]" style={{ left: `${x}%` }} title={`${fullLabel} · ${fmt(date)}`}>
+    : label === 'Готов 100%'
+      ? 'Весь персонал обучен и готов'
+      : label === 'Готов'
+        ? 'Профессия обучена и готова'
+        : label;
+  const labelPosition = roleSpecific ? 'top-0.5' : label === 'Готов 100%' ? 'top-[20px]' : 'top-0.5';
+  return <div className={`pointer-events-none absolute bottom-0 top-0 ${roleSpecific ? 'z-[4]' : 'z-[2]'}`} style={{ left: `${x}%` }} title={`${fullLabel} · ${fmt(date)}`}>
     <span className="absolute bottom-0 top-0 border-l border-dashed" style={{ borderColor: color }} />
     <button
       type="button"
@@ -710,7 +896,7 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove }: { date:
       onPointerUp={() => { pointerDown.current = false; }}
       onPointerCancel={() => { pointerDown.current = false; }}
     />
-    <span className={`absolute left-1 whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${label === 'Готов' ? 'top-[20px]' : 'top-0.5'}`} style={{ background: color }}>{label}</span>
+    <span className={`absolute left-1 whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelPosition}`} style={{ background: color }}>{label}</span>
     <span className="sr-only">{fullLabel}: {fmt(date)}</span>
   </div>;
 }
@@ -742,21 +928,27 @@ function PhaseModal({ phase, project, onClose, onSave, onDelete }: { phase: Phas
     </form>
   </Modal>;
 }
-function TrainingModal({ event, project, onClose, onSave, onDelete }: { event: TrainingEvent | null; project: Project; onClose: () => void; onSave: (event: TrainingEvent) => void; onDelete: () => void }) {
+function TrainingModal({ event, project, onClose, onSave, onDelete, presetScope }: { event: TrainingEvent | null; project: Project; onClose: () => void; onSave: (event: TrainingEvent) => void; onDelete: () => void; presetScope?: { shopIds: string[]; roleIds: string[] } }) {
   const [title, setTitle] = useState(event?.title ?? '');
   const [category, setCategory] = useState<TrainingEvent['category']>(event?.category ?? 'mandatory');
   const [duration, setDuration] = useState(event?.duration ?? 5);
   const [unit, setUnit] = useState<TrainingEvent['unit']>(event?.unit ?? 'days');
+  const [costUsd, setCostUsd] = useState(event?.costUsd === undefined ? '' : String(event.costUsd));
   const [status, setStatus] = useState<TrainingEvent['status']>(event?.status ?? 'planned');
-  const [shopIds, setShopIds] = useState<string[]>(event?.shopIds ?? project.shops.map(s => s.id));
-  const [roleIds, setRoleIds] = useState<string[]>(event?.roleIds ?? []);
+  const [shopIds, setShopIds] = useState<string[]>(event?.shopIds ?? presetScope?.shopIds ?? project.shops.map(s => s.id));
+  const [roleIds, setRoleIds] = useState<string[]>(event?.roleIds ?? presetScope?.roleIds ?? []);
   const [note, setNote] = useState(event?.note ?? '');
   const roles = project.shops.filter(s => shopIds.includes(s.id)).flatMap(s => s.roles.map(r => ({ ...r, shop: s.name })));
-  const submit = (e: FormEvent) => { e.preventDefault(); if (Number(duration) < 0 || !shopIds.length) return; onSave({ id: event?.id ?? uid(), title: title.trim(), category, duration: Number(duration), unit, shopIds, roleIds: roleIds.filter(id => roles.some(role => role.id === id)), note: note || null, status, sortOrder: event?.sortOrder ?? project.training.length }); };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const parsedCost = costUsd.trim() === '' ? undefined : Number(costUsd);
+    if (Number(duration) < 0 || !shopIds.length || (parsedCost !== undefined && (!Number.isFinite(parsedCost) || parsedCost < 0))) return;
+    onSave({ id: event?.id ?? uid(), title: title.trim(), category, duration: Number(duration), unit, ...(parsedCost === undefined ? {} : { costUsd: parsedCost }), shopIds, roleIds: roleIds.filter(id => roles.some(role => role.id === id)), note: note || null, status, sortOrder: event?.sortOrder ?? project.training.length });
+  };
   return <Modal title={event ? 'Изменить обучение' : 'Обучающее событие'} subtitle="Состав программы, продолжительность и целевая аудитория." onClose={onClose} wide>
     <form onSubmit={submit} className="space-y-4 p-6">
       <div className="grid gap-3 md:grid-cols-[1fr_180px]"><Field label="Название"><input className="control h-10 w-full px-3 text-sm" value={title} onChange={e => setTitle(e.target.value)} placeholder="Например, безопасная работа с оборудованием" required /></Field><Field label="Категория"><select className="control h-10 w-full px-2 text-xs" value={category} onChange={e => setCategory(e.target.value as TrainingEvent['category'])}>{Object.entries(categoryNames).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field></div>
-      <div className="grid grid-cols-3 gap-3"><Field label="Длительность"><input className="control h-10 w-full px-3 text-sm" type="number" min="0" step="any" required value={duration} onChange={e => setDuration(Number(e.target.value))} /></Field><Field label="Единица"><select className="control h-10 w-full px-2 text-xs" value={unit} onChange={e => setUnit(e.target.value as TrainingEvent['unit'])}><option value="days">Дни</option><option value="weeks">Недели</option><option value="months">Месяцы</option></select></Field><Field label="Статус"><select className="control h-10 w-full px-2 text-xs" value={status} onChange={e => setStatus(e.target.value as TrainingEvent['status'])}>{Object.entries(statusNames).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Field label="Длительность"><input className="control h-10 w-full px-3 text-sm" type="number" min="0" step="any" required value={duration} onChange={e => setDuration(Number(e.target.value))} /></Field><Field label="Единица"><select className="control h-10 w-full px-2 text-xs" value={unit} onChange={e => setUnit(e.target.value as TrainingEvent['unit'])}><option value="days">Дни</option><option value="weeks">Недели</option><option value="months">Месяцы</option></select></Field><Field label="Статус"><select className="control h-10 w-full px-2 text-xs" value={status} onChange={e => setStatus(e.target.value as TrainingEvent['status'])}>{Object.entries(statusNames).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field><Field label="Стоимость, USD (необязательно)"><input className="control h-10 w-full px-3 text-sm" type="number" min="0" step="0.01" value={costUsd} onChange={e => setCostUsd(e.target.value)} placeholder="Не указана" /></Field></div>
       <Field label="Площадки"><div className="flex flex-wrap gap-2">{project.shops.map(s => <button type="button" key={s.id} onClick={() => setShopIds(ids => ids.includes(s.id) ? ids.filter(id => id !== s.id) : [...ids, s.id])} className={`rounded-md border px-3 py-2 text-[10px] font-bold ${shopIds.includes(s.id) ? 'border-[#91aaa0] bg-[#e8eee8] text-[#416a5d]' : 'border-[#ded9ce] text-[#84877f]'}`}>{s.name}</button>)}</div></Field>
       <Field label="Роли участников"><div className="max-h-28 overflow-y-auto rounded-md border border-[#e4e0d6] p-2">{roles.length ? <div className="grid gap-1 sm:grid-cols-2">{roles.map(r => <label key={r.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-[10px] hover:bg-[#f2efe8]"><input type="checkbox" checked={roleIds.includes(r.id)} onChange={e => setRoleIds(ids => e.target.checked ? [...ids, r.id] : ids.filter(id => id !== r.id))} className="accent-[#bd4c2b]" />{r.name}<span className="ml-auto text-[#99998f]">{r.shop}</span></label>)}</div> : <span className="text-[10px] text-[#85877e]">Выберите площадку, чтобы выбрать роли.</span>}</div></Field>
       <Field label="Примечание"><textarea className="control min-h-14 w-full px-3 py-2 text-xs" value={note} onChange={e => setNote(e.target.value)} placeholder="Организация, подрядчик, условия…" /></Field>
@@ -764,15 +956,76 @@ function TrainingModal({ event, project, onClose, onSave, onDelete }: { event: T
     </form>
   </Modal>;
 }
-function RolesModal({ project, onClose, onSave }: { project: Project; onClose: () => void; onSave: (shops: Project['shops']) => void }) {
-  const [shops, setShops] = useState(project.shops);
+function RolesModal({ project, onClose, onSave, onAddTraining }: { project: Project; onClose: () => void; onSave: (shops: Project['shops']) => void; onAddTraining: (event: TrainingEvent, shopId: string, role: Role) => void }) {
+  const [shops, setShops] = useState(() => project.shops.map(shop => ({
+    ...shop,
+    roles: shop.roles.map(role => ({ ...role, headcount: role.headcount ?? 1 })),
+  })));
+  const [trainingScope, setTrainingScope] = useState<{ shopId: string; roleId: string } | null>(null);
   const updateRole = (shopId: string, roleId: string, changes: Partial<Role>) => setShops(all => all.map(s => s.id === shopId ? { ...s, roles: s.roles.map(r => r.id === roleId ? { ...r, ...changes } : r) } : s));
-  const addRole = (shopId: string) => setShops(all => all.map(s => s.id === shopId ? { ...s, roles: [...s.roles, { id: uid(), name: 'Новая роль', group: 'itr', visible: true }] } : s));
+  const addRole = (shopId: string) => setShops(all => all.map(s => s.id === shopId ? { ...s, roles: [...s.roles, { id: uid(), name: 'Новая роль', group: 'itr', visible: true, headcount: 1 }] } : s));
   const removeRole = (shopId: string, roleId: string) => setShops(all => all.map(s => s.id === shopId ? { ...s, roles: s.roles.filter(r => r.id !== roleId) } : s));
-  return <Modal title="Роли площадок" subtitle="Настройте роли персонала, участвующие в подготовке." onClose={onClose} wide>
-    <div className="max-h-[60vh] space-y-3 overflow-y-auto p-5">{shops.map(shop => <section key={shop.id} className="rounded-lg border border-[#e5e1d7] bg-[#f8f6ef] p-3"><div className="mb-2 flex items-center justify-between"><h3 className="text-xs font-extrabold">{shop.name}</h3><button onClick={() => addRole(shop.id)} className="text-[10px] font-bold text-[#bd4c2b]"><Plus className="mr-1 inline" size={12} />Добавить роль</button></div>{shop.roles.map(role => <div key={role.id} className="mb-1 flex items-center gap-2"><input aria-label="Название роли" value={role.name} onChange={e => updateRole(shop.id, role.id, { name: e.target.value })} className="control h-8 min-w-0 flex-1 px-2 text-[11px]" /><select aria-label="Группа роли" value={role.group} onChange={e => updateRole(shop.id, role.id, { group: e.target.value as Role['group'] })} className="control h-8 w-28 px-2 text-[10px]"><option value="itr">ИТР</option><option value="workers">Рабочие</option></select><label className="flex items-center gap-1 text-[9px] text-[#6e7672]"><input type="checkbox" checked={role.visible} onChange={e => updateRole(shop.id, role.id, { visible: e.target.checked })} className="accent-[#bd4c2b]" />В плане</label><IconButton label="Удалить роль" onClick={() => removeRole(shop.id, role.id)} danger><Trash2 size={12} /></IconButton></div>)}</section>)}</div>
-    <div className="flex justify-end gap-2 border-t border-[#e5e1d7] px-5 py-4"><button onClick={onClose} className="control h-9 px-3 text-xs font-bold">Отмена</button><button onClick={() => onSave(shops)} className="btn-primary h-9 rounded-md px-4 text-xs font-bold">Сохранить роли</button></div>
-  </Modal>;
+  const saveTrainingForRole = (event: TrainingEvent) => {
+    if (!trainingScope) return;
+    const role = shops.find(shop => shop.id === trainingScope.shopId)?.roles.find(item => item.id === trainingScope.roleId);
+    if (!role) return;
+    onAddTraining(event, trainingScope.shopId, role);
+    setTrainingScope(null);
+  };
+
+  return <>
+    <Modal title="Роли площадок" subtitle="Наведите на строку роли, чтобы увидеть назначенные обучения." onClose={onClose} wide>
+      <div className="max-h-[60vh] space-y-3 overflow-y-auto p-5">
+        {shops.map(shop => <section key={shop.id} className="rounded-lg border border-[#e5e1d7] bg-[#f8f6ef] p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-extrabold">{shop.name}</h3>
+            <button type="button" onClick={() => addRole(shop.id)} className="text-[10px] font-bold text-[#bd4c2b]"><Plus className="mr-1 inline" size={12} />Добавить роль</button>
+          </div>
+          {shop.roles.map(role => {
+            const assignedTrainings = project.training
+              .filter(event => event.shopIds.includes(shop.id) && (!event.roleIds.length || event.roleIds.includes(role.id)))
+              .sort((a, b) => a.sortOrder - b.sortOrder);
+            return <Tooltip.Root key={role.id} delayDuration={250}>
+              <Tooltip.Trigger asChild>
+                <div tabIndex={0} role="group" aria-label={`Роль ${role.name}`} className="mb-1 flex flex-wrap items-center gap-2 rounded-md px-1 py-1 outline-none hover:bg-[#f1eee6] focus-visible:ring-2 focus-visible:ring-[#bd4c2b]">
+                  <input aria-label={`Название роли, ${role.name}`} value={role.name} onChange={e => updateRole(shop.id, role.id, { name: e.target.value })} className="control h-8 min-w-[150px] flex-1 px-2 text-[11px]" />
+                  <select aria-label={`Группа роли, ${role.name}`} value={role.group} onChange={e => updateRole(shop.id, role.id, { group: e.target.value as Role['group'] })} className="control h-8 w-24 px-2 text-[10px]"><option value="itr">ИТР</option><option value="workers">Рабочие</option></select>
+                  <label className="flex items-center gap-1 text-[9px] text-[#6e7672]">чел.<input aria-label={`Численность: ${role.name}`} type="number" min="0" step="1" value={role.headcount ?? 1} onChange={e => updateRole(shop.id, role.id, { headcount: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className="control h-8 w-14 px-1.5 text-center text-[10px]" /></label>
+                  <label className="flex items-center gap-1 text-[9px] text-[#6e7672]"><input type="checkbox" checked={role.visible} onChange={e => updateRole(shop.id, role.id, { visible: e.target.checked })} className="accent-[#bd4c2b]" />В плане</label>
+                  <button type="button" onClick={() => setTrainingScope({ shopId: shop.id, roleId: role.id })} className="inline-flex h-8 items-center gap-1 rounded-md border border-[#e2cfc5] px-2 text-[9px] font-bold text-[#a7472e] hover:bg-[#f7e9e2]">
+                    <Plus size={12} />Добавить обучение
+                  </button>
+                  <IconButton label={`Удалить роль ${role.name}`} onClick={() => removeRole(shop.id, role.id)} danger><Trash2 size={12} /></IconButton>
+                </div>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content side="right" align="start" sideOffset={8} collisionPadding={12} className="z-[100] w-[300px] max-w-[88vw] rounded-lg border border-[#d9d4ca] bg-[#fbfaf5] p-3 text-[#293640] shadow-xl">
+                  <h4 className="mb-2 text-[11px] font-extrabold">Обучения для роли «{role.name}»</h4>
+                  {assignedTrainings.length ? <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
+                    {assignedTrainings.map(event => <li key={event.id} className="border-t border-[#e9e5dc] pt-2 first:border-0 first:pt-0">
+                      <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-bold">{event.title}</span><span className="shrink-0 text-[9px] text-[#777b76]">{statusNames[event.status]}</span></div>
+                      <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[event.category]} · {event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, project.settings.dayType)} дн.{event.costUsd !== undefined ? ` · ${formatUsd(event.costUsd)}` : ''}</p>
+                      {event.note && <p className="mt-1 whitespace-pre-wrap text-[9px] leading-relaxed text-[#6d7470]">{event.note}</p>}
+                    </li>)}
+                  </ul> : <p className="text-[10px] text-[#777b76]">Для этой роли пока не назначено обучение.</p>}
+                  <Tooltip.Arrow className="fill-[#fbfaf5]" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>;
+          })}
+        </section>)}
+      </div>
+      <div className="flex justify-end gap-2 border-t border-[#e5e1d7] px-5 py-4"><button type="button" onClick={onClose} className="control h-9 px-3 text-xs font-bold">Отмена</button><button type="button" onClick={() => onSave(shops)} className="btn-primary h-9 rounded-md px-4 text-xs font-bold">Сохранить роли</button></div>
+    </Modal>
+    {trainingScope && <TrainingModal
+      event={null}
+      project={{ ...project, shops }}
+      presetScope={{ shopIds: [trainingScope.shopId], roleIds: [trainingScope.roleId] }}
+      onClose={() => setTrainingScope(null)}
+      onSave={saveTrainingForRole}
+      onDelete={() => setTrainingScope(null)}
+    />}
+  </>;
 }
 function SettingsModal({ project, onClose, onSave }: { project: Project; onClose: () => void; onSave: (changes: Partial<Project>) => void }) {
   const [settings, setSettings] = useState(project.settings);
@@ -816,7 +1069,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><Planner /></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><Tooltip.Provider delayDuration={250}><Planner /></Tooltip.Provider></QueryClientProvider>;
 }
 
 export default App;

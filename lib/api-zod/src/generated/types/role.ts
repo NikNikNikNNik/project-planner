@@ -12,4 +12,6 @@ export interface Role {
   name: string;
   group: RoleGroup;
   visible: boolean;
+  /** @minimum 0 */
+  headcount?: number;
 }

@@ -36,7 +36,11 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem)
  * @summary Create a project
  */
 
+export const createProjectBodyShopsItemRolesItemHeadcountMin = 0;
+
 export const createProjectBodyTrainingItemDurationMin = 0;
+
+export const createProjectBodyTrainingItemCostUsdMin = 0;
 
 export const createProjectBodySettingsDaysBeforeMcMin = 0;
 
@@ -53,7 +57,8 @@ export const CreateProjectBody = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
-  "visible": zod.boolean()
+  "visible": zod.boolean(),
+  "headcount": zod.number().int().min(createProjectBodyShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -83,6 +88,7 @@ export const CreateProjectBody = zod.object({
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "duration": zod.number().min(createProjectBodyTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
+  "costUsd": zod.number().min(createProjectBodyTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
@@ -101,7 +107,11 @@ export const CreateProjectBody = zod.object({
 })
 
 
+export const createProjectResponseShopsItemRolesItemHeadcountMin = 0;
+
 export const createProjectResponseTrainingItemDurationMin = 0;
+
+export const createProjectResponseTrainingItemCostUsdMin = 0;
 
 export const createProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -120,7 +130,8 @@ export const CreateProjectResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
-  "visible": zod.boolean()
+  "visible": zod.boolean(),
+  "headcount": zod.number().int().min(createProjectResponseShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -150,6 +161,7 @@ export const CreateProjectResponse = zod.object({
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "duration": zod.number().min(createProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
+  "costUsd": zod.number().min(createProjectResponseTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
@@ -176,7 +188,11 @@ export const GetProjectParams = zod.object({
 })
 
 
+export const getProjectResponseShopsItemRolesItemHeadcountMin = 0;
+
 export const getProjectResponseTrainingItemDurationMin = 0;
+
+export const getProjectResponseTrainingItemCostUsdMin = 0;
 
 export const getProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -195,7 +211,8 @@ export const GetProjectResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
-  "visible": zod.boolean()
+  "visible": zod.boolean(),
+  "headcount": zod.number().int().min(getProjectResponseShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -225,6 +242,7 @@ export const GetProjectResponse = zod.object({
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "duration": zod.number().min(getProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
+  "costUsd": zod.number().min(getProjectResponseTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
@@ -251,7 +269,11 @@ export const UpdateProjectParams = zod.object({
 })
 
 
+export const updateProjectBodyShopsItemRolesItemHeadcountMin = 0;
+
 export const updateProjectBodyTrainingItemDurationMin = 0;
+
+export const updateProjectBodyTrainingItemCostUsdMin = 0;
 
 export const updateProjectBodySettingsDaysBeforeMcMin = 0;
 
@@ -268,7 +290,8 @@ export const UpdateProjectBody = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
-  "visible": zod.boolean()
+  "visible": zod.boolean(),
+  "headcount": zod.number().int().min(updateProjectBodyShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -298,6 +321,7 @@ export const UpdateProjectBody = zod.object({
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "duration": zod.number().min(updateProjectBodyTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
+  "costUsd": zod.number().min(updateProjectBodyTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
@@ -316,7 +340,11 @@ export const UpdateProjectBody = zod.object({
 })
 
 
+export const updateProjectResponseShopsItemRolesItemHeadcountMin = 0;
+
 export const updateProjectResponseTrainingItemDurationMin = 0;
+
+export const updateProjectResponseTrainingItemCostUsdMin = 0;
 
 export const updateProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -335,7 +363,8 @@ export const UpdateProjectResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
-  "visible": zod.boolean()
+  "visible": zod.boolean(),
+  "headcount": zod.number().int().min(updateProjectResponseShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -365,6 +394,7 @@ export const UpdateProjectResponse = zod.object({
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "duration": zod.number().min(updateProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
+  "costUsd": zod.number().min(updateProjectResponseTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
@@ -401,7 +431,11 @@ export const CopyProjectParams = zod.object({
 })
 
 
+export const copyProjectResponseShopsItemRolesItemHeadcountMin = 0;
+
 export const copyProjectResponseTrainingItemDurationMin = 0;
+
+export const copyProjectResponseTrainingItemCostUsdMin = 0;
 
 export const copyProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -420,7 +454,8 @@ export const CopyProjectResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
-  "visible": zod.boolean()
+  "visible": zod.boolean(),
+  "headcount": zod.number().int().min(copyProjectResponseShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -450,6 +485,7 @@ export const CopyProjectResponse = zod.object({
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "duration": zod.number().min(copyProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
+  "costUsd": zod.number().min(copyProjectResponseTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
