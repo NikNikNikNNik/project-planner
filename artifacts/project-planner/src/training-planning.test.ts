@@ -16,13 +16,14 @@ function training(
   shopIds: string[],
   roleIds: string[],
   sortOrder: number,
+  unit: TrainingEvent['unit'] = 'days',
 ): TrainingEvent {
   return {
     id,
     title,
     category: 'mandatory',
     duration,
-    unit: 'days',
+    unit,
     shopIds,
     roleIds,
     note: null,
@@ -129,6 +130,60 @@ test('expanded role schedule shows the longest assigned training in parallel mod
   assert.equal(plan.startDate, '2026-06-17');
   assert.equal(plan.endDate, '2026-06-20');
   assert.equal(plan.hasTrainingBar, true);
+});
+
+test('sequential working-day training skips weekends for day and week durations', () => {
+  const trainingProject = project('sequential');
+  trainingProject.startDate = '2026-06-05';
+  trainingProject.settings.dayType = 'working';
+  trainingProject.training = [
+    training('short', 'Короткое обучение', 2, [shopId], [roleA.id], 0),
+    training('week', 'Обучение на неделю', 1, [shopId], [roleA.id], 1, 'weeks'),
+  ];
+
+  const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, null);
+
+  assert.equal(plan.totalDays, 7);
+  assert.deepEqual(
+    plan.schedule.map(({ event, startDate, endDate, durationDays }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+      durationDays,
+    })),
+    [
+      { id: 'short', startDate: '2026-06-05', endDate: '2026-06-09', durationDays: 2 },
+      { id: 'week', startDate: '2026-06-09', endDate: '2026-06-16', durationDays: 5 },
+    ],
+  );
+  assert.equal(plan.endDate, '2026-06-16');
+});
+
+test('parallel working-day training calculates day and week ranges across weekends', () => {
+  const trainingProject = project('parallel');
+  trainingProject.settings.dayType = 'working';
+  trainingProject.training = [
+    training('short', 'Короткое обучение', 2, [shopId], [roleA.id], 0),
+    training('week', 'Обучение на неделю', 1, [shopId], [roleA.id], 1, 'weeks'),
+  ];
+
+  const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, '2026-06-15');
+
+  assert.equal(plan.totalDays, 5);
+  assert.deepEqual(
+    plan.schedule.map(({ event, startDate, endDate, durationDays }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+      durationDays,
+    })),
+    [
+      { id: 'short', startDate: '2026-06-11', endDate: '2026-06-15', durationDays: 2 },
+      { id: 'week', startDate: '2026-06-08', endDate: '2026-06-15', durationDays: 5 },
+    ],
+  );
+  assert.equal(plan.startDate, '2026-06-08');
+  assert.equal(plan.endDate, '2026-06-15');
 });
 
 test('a role without training has no dates or colored training bar', () => {
