@@ -16,6 +16,7 @@ export interface TrainingEvent {
   /** @minimum 0 */
   duration: number;
   unit: TrainingEventUnit;
+  startDate?: string;
   /** @minimum 0 */
   costUsd?: number;
   shopIds: string[];

@@ -17,6 +17,7 @@ function training(
   roleIds: string[],
   sortOrder: number,
   unit: TrainingEvent['unit'] = 'days',
+  startDate?: string,
 ): TrainingEvent {
   return {
     id,
@@ -24,6 +25,7 @@ function training(
     category: 'mandatory',
     duration,
     unit,
+    ...(startDate ? { startDate } : {}),
     shopIds,
     roleIds,
     note: null,
@@ -283,6 +285,53 @@ test('parallel working-day training calculates day and week ranges across weeken
   );
   assert.equal(plan.startDate, '2026-06-08');
   assert.equal(plan.endDate, '2026-06-15');
+});
+
+test('manual training start date anchors a sequential event and its duration', () => {
+  const trainingProject = project('sequential');
+  trainingProject.training = [
+    training('pinned', 'Обучение с датой', 2, [shopId], [roleA.id], 0, 'days', '2026-06-10'),
+    training('automatic', 'Обучение по расчёту', 3, [shopId], [roleA.id], 1),
+  ];
+
+  const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, '2026-06-20');
+
+  assert.deepEqual(
+    plan.schedule.map(({ event, startDate, endDate, approximate }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+      approximate,
+    })),
+    [
+      { id: 'pinned', startDate: '2026-06-10', endDate: '2026-06-12', approximate: false },
+      { id: 'automatic', startDate: '2026-06-17', endDate: '2026-06-20', approximate: false },
+    ],
+  );
+  assert.equal(plan.contractDate, '2026-06-10');
+});
+
+test('manual training start date overrides the parallel estimate and respects working days', () => {
+  const trainingProject = project('parallel');
+  trainingProject.settings.dayType = 'working';
+  trainingProject.training = [
+    training('pinned', 'Обучение с датой', 2, [shopId], [roleA.id], 0, 'days', '2026-06-05'),
+    training('automatic', 'Обучение по расчёту', 3, [shopId], [roleA.id], 1),
+  ];
+
+  const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, '2026-06-15');
+
+  assert.deepEqual(
+    plan.schedule.map(({ event, startDate, endDate }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+    })),
+    [
+      { id: 'pinned', startDate: '2026-06-05', endDate: '2026-06-09' },
+      { id: 'automatic', startDate: '2026-06-10', endDate: '2026-06-15' },
+    ],
+  );
 });
 
 test('a role without training has no dates or colored training bar', () => {

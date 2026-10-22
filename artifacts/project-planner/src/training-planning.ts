@@ -106,9 +106,9 @@ export function scheduleTrainingTimeline(project: Project, readyDate: string | n
     return sorted.flatMap(event => {
       const durationDays = trainingDays(event, dayType);
       if (durationDays <= 0) return [];
-      const startDate = readyDate ? shift(anchor, -durationDays) : anchor;
-      const endDate = readyDate ?? shift(anchor, durationDays);
-      return [{ event, startDate, endDate, durationDays, approximate }];
+      const startDate = event.startDate ?? (readyDate ? shift(anchor, -durationDays) : anchor);
+      const endDate = event.startDate ? shift(startDate, durationDays) : readyDate ?? shift(anchor, durationDays);
+      return [{ event, startDate, endDate, durationDays, approximate: event.startDate ? false : approximate }];
     });
   }
 
@@ -118,8 +118,9 @@ export function scheduleTrainingTimeline(project: Project, readyDate: string | n
     for (const event of [...sorted].reverse()) {
       const durationDays = trainingDays(event, dayType);
       if (durationDays <= 0) continue;
-      const startDate = shift(cursor, -durationDays);
-      scheduled.set(event.id, { event, startDate, endDate: cursor, durationDays, approximate });
+      const startDate = event.startDate ?? shift(cursor, -durationDays);
+      const endDate = event.startDate ? shift(startDate, durationDays) : cursor;
+      scheduled.set(event.id, { event, startDate, endDate, durationDays, approximate: event.startDate ? false : approximate });
       cursor = startDate;
     }
   } else {
@@ -127,8 +128,9 @@ export function scheduleTrainingTimeline(project: Project, readyDate: string | n
     for (const event of sorted) {
       const durationDays = trainingDays(event, dayType);
       if (durationDays <= 0) continue;
-      const endDate = shift(cursor, durationDays);
-      scheduled.set(event.id, { event, startDate: cursor, endDate, durationDays, approximate });
+      const startDate = event.startDate ?? cursor;
+      const endDate = event.startDate ? shift(startDate, durationDays) : shift(cursor, durationDays);
+      scheduled.set(event.id, { event, startDate, endDate, durationDays, approximate: event.startDate ? false : approximate });
       cursor = endDate;
     }
   }

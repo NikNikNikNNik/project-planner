@@ -208,6 +208,7 @@ components:
         category: { type: string, enum: [mandatory, technology, internship, lvcc, other] }
         duration: { type: number, minimum: 0 }
         unit: { type: string, enum: [days, weeks, months] }
+        startDate: { type: string }
         costUsd: { type: number, minimum: 0 }
         shopIds:
           type: array
