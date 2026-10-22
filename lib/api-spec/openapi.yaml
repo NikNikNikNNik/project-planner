@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: projects
+    description: Project planning
 paths:
   /healthz:
     get:
@@ -24,6 +26,115 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List projects and planning summaries
+      responses:
+        "200":
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectSummary"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInput"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+  /projects/{projectId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get project details
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+    put:
+      operationId: updateProject
+      tags: [projects]
+      summary: Save project changes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInput"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Project not found
+  /projects/{projectId}/copy:
+    post:
+      operationId: copyProject
+      tags: [projects]
+      summary: Copy a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Copied project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+  /planning/summary:
+    get:
+      operationId: getPlanningSummary
+      tags: [projects]
+      summary: Get an overview across projects
+      responses:
+        "200":
+          description: Portfolio summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningSummary"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +144,139 @@ components:
           type: string
       required:
         - status
+    ProjectSummary:
+      type: object
+      required: [id, title, startDate, endDate, updatedAt, phaseCount, trainingCount]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        startDate: { type: string }
+        endDate: { type: string }
+        updatedAt: { type: string, format: date-time }
+        phaseCount: { type: integer }
+        trainingCount: { type: integer }
+    Role:
+      type: object
+      required: [id, name, group, visible]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        group: { type: string, enum: [itr, workers] }
+        visible: { type: boolean }
+    Shop:
+      type: object
+      required: [id, name, roles]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+    Phase:
+      type: object
+      required: [id, name, type, startDate, endDate, shopIds, note]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [construction, precommissioning, commissioning, operation] }
+        startDate: { type: string }
+        endDate: { type: string }
+        shopIds:
+          type: array
+          items: { type: string }
+        note: { type: ["string", "null"] }
+    Milestone:
+      type: object
+      required: [date, note, shopIds]
+      properties:
+        date: { type: ["string", "null"] }
+        note: { type: ["string", "null"] }
+        shopIds:
+          type: array
+          items: { type: string }
+    TrainingEvent:
+      type: object
+      required: [id, title, category, duration, unit, shopIds, roleIds, note, status, sortOrder]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        category: { type: string, enum: [mandatory, technology, internship, lvcc, other] }
+        duration: { type: number, minimum: 0 }
+        unit: { type: string, enum: [days, weeks, months] }
+        shopIds:
+          type: array
+          items: { type: string }
+        roleIds:
+          type: array
+          items: { type: string }
+        note: { type: ["string", "null"] }
+        status: { type: string, enum: [planned, in_progress, completed] }
+        sortOrder: { type: integer }
+    ProjectSettings:
+      type: object
+      required: [calculationMode, readyMode, readyDate, daysBeforeMc, dayType, contractDate]
+      properties:
+        calculationMode: { type: string, enum: [sequential, parallel] }
+        readyMode: { type: string, enum: [fixed, relative] }
+        readyDate: { type: ["string", "null"] }
+        daysBeforeMc: { type: integer, minimum: 0 }
+        readyOffsetUnit: { type: string, enum: [days, weeks, months] }
+        dayType: { type: string, enum: [calendar, working] }
+        contractDate: { type: ["string", "null"], format: date }
+    Project:
+      type: object
+      required: [id, title, startDate, endDate, updatedAt, shops, phases, milestones, training, settings]
+      properties:
+        id: { type: string }
+        title: { type: string, minLength: 1 }
+        startDate: { type: string }
+        endDate: { type: string }
+        updatedAt: { type: string, format: date-time }
+        shops:
+          type: array
+          items: { $ref: "#/components/schemas/Shop" }
+        phases:
+          type: array
+          items: { $ref: "#/components/schemas/Phase" }
+        milestones:
+          type: object
+          required: [mc, rfsu]
+          properties:
+            mc: { $ref: "#/components/schemas/Milestone" }
+            rfsu: { $ref: "#/components/schemas/Milestone" }
+        training:
+          type: array
+          items: { $ref: "#/components/schemas/TrainingEvent" }
+        settings: { $ref: "#/components/schemas/ProjectSettings" }
+    ProjectInput:
+      type: object
+      required: [title, startDate, endDate, shops, phases, milestones, training, settings]
+      properties:
+        title: { type: string, minLength: 1 }
+        startDate: { type: string }
+        endDate: { type: string }
+        shops:
+          type: array
+          items: { $ref: "#/components/schemas/Shop" }
+        phases:
+          type: array
+          items: { $ref: "#/components/schemas/Phase" }
+        milestones:
+          type: object
+          required: [mc, rfsu]
+          properties:
+            mc: { $ref: "#/components/schemas/Milestone" }
+            rfsu: { $ref: "#/components/schemas/Milestone" }
+        training:
+          type: array
+          items: { $ref: "#/components/schemas/TrainingEvent" }
+        settings: { $ref: "#/components/schemas/ProjectSettings" }
+    PlanningSummary:
+      type: object
+      required: [projectCount, phaseCount, trainingCount, activeTrainingCount]
+      properties:
+        projectCount: { type: integer }
+        phaseCount: { type: integer }
+        trainingCount: { type: integer }
+        activeTrainingCount: { type: integer }
 

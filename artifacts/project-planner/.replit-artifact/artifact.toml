@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Планировщик проектов"
+description = "Русскоязычное веб-приложение для планирования сроков проектов и подготовки персонала по четырём производственным цехам. Управляйте этапами, контрольными отсечками MC и RFSU, мероприятиями обучения и расчётами готовности персонала."
+version = "1.0.0"
+id = "artifacts/project-planner"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25623
+
+[services.development]
+run = "pnpm --filter @workspace/project-planner run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/project-planner", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/project-planner/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25623"
+BASE_PATH = "/"

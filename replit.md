@@ -1,15 +1,15 @@
-# [Project name]
+# Планировщик проектов
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Русскоязычный планировщик сроков проектов и подготовки персонала по четырём производственным цехам.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/api-server run dev` — запуск API
+- `pnpm --filter @workspace/project-planner run dev` — запуск веб-приложения
+- `pnpm run typecheck` — проверка типов workspace
+- `pnpm --filter @workspace/api-spec run codegen` — генерация клиентских хуков и схем из OpenAPI
+- `pnpm --filter @workspace/db run push` — применение схемы к базе разработки
+- Требуется `DATABASE_URL` для PostgreSQL.
 
 ## Stack
 
@@ -20,25 +20,33 @@ _Replace the heading above with the project's name, and this line with one sente
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 
-## Where things live
+## Где находится код
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/project-planner/` — React-интерфейс доски и портфеля проектов.
+- `artifacts/api-server/src/routes/projects.ts` — REST API проектов.
+- `lib/api-spec/openapi.yaml` — контракт API; после изменения запускайте codegen.
+- `lib/db/src/schema/projects.ts` — таблица проектов.
 
-## Architecture decisions
+## Архитектурные решения
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- План проекта хранится как структурированный JSON в PostgreSQL вместе с основной записью проекта, чтобы автосохранение отправляло согласованный снимок.
+- Даты планирования — календарные значения `YYYY-MM-DD`; не преобразовывать их в моменты времени и не применять часовой сдвиг.
+- OpenAPI — источник истины для API-контракта и сгенерированных типов/хуков.
+- Подготовка персонала рассчитывается на клиенте из длительностей мероприятий; введённая вручную дата контракта имеет приоритет и проверяется на дефицит времени.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Пользователь ведёт отдельные проекты для площадок «Пиролиз», «Бутен1», «Полимеризация» и «ОЗХ», настраивает роли, этапы «Стройка», «ПредПНР», «ПНР», «Эксплуатация», контрольные отсечки MC/RFSU и обучение. Даты готовности и контракта пересчитываются по режиму обучения и настройке календарных/рабочих дней. Проекты сохраняются в PostgreSQL.
 
-## User preferences
+## Требования к продукту
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Интерфейс и тексты приложения — на русском языке.
+- MVP рассчитан на одного пользователя; совместная работа и права доступа остаются на будущее.
 
-## Gotchas
+## Важные замечания
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- В OpenAPI не задавайте `format: date` для календарных полей: генератор Zod может преобразовать их в объекты `Date`, что приводит к временным меткам и ломает календарные поля интерфейса.
+- При изменении `lib/api-spec/openapi.yaml` перезапустите codegen до проверки зависимых пакетов.
 
 ## Pointers
 
