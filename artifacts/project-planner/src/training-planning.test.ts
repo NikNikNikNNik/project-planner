@@ -132,6 +132,90 @@ test('expanded role schedule shows the longest assigned training in parallel mod
   assert.equal(plan.hasTrainingBar, true);
 });
 
+test('sequential role schedule without a ready date uses the contract date or project start', () => {
+  const withContractDate = project('sequential');
+  withContractDate.settings.contractDate = '2026-06-10';
+  const contractPlan = getRoleTrainingPlan(withContractDate, shopId, roleA.id, null);
+
+  assert.deepEqual(contractPlan.events.map(event => event.id), ['general', 'role-a', 'zero']);
+  assert.equal(contractPlan.totalDays, 5);
+  assert.deepEqual(
+    contractPlan.schedule.map(({ event, startDate, endDate, approximate }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+      approximate,
+    })),
+    [
+      { id: 'general', startDate: '2026-06-10', endDate: '2026-06-12', approximate: false },
+      { id: 'role-a', startDate: '2026-06-12', endDate: '2026-06-15', approximate: false },
+    ],
+  );
+  assert.equal(contractPlan.startDate, '2026-06-10');
+  assert.equal(contractPlan.endDate, '2026-06-15');
+
+  const withoutContractDate = getRoleTrainingPlan(project('sequential'), shopId, roleA.id, null);
+
+  assert.deepEqual(withoutContractDate.events.map(event => event.id), ['general', 'role-a', 'zero']);
+  assert.equal(withoutContractDate.totalDays, 5);
+  assert.deepEqual(
+    withoutContractDate.schedule.map(({ event, startDate, endDate, approximate }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+      approximate,
+    })),
+    [
+      { id: 'general', startDate: '2026-06-01', endDate: '2026-06-03', approximate: true },
+      { id: 'role-a', startDate: '2026-06-03', endDate: '2026-06-06', approximate: true },
+    ],
+  );
+  assert.equal(withoutContractDate.startDate, '2026-06-01');
+  assert.equal(withoutContractDate.endDate, '2026-06-06');
+});
+
+test('parallel role schedule without a ready date uses the contract date or project start', () => {
+  const withContractDate = project('parallel');
+  withContractDate.settings.contractDate = '2026-06-10';
+  const contractPlan = getRoleTrainingPlan(withContractDate, shopId, roleA.id, null);
+
+  assert.deepEqual(contractPlan.events.map(event => event.id), ['general', 'role-a', 'zero']);
+  assert.equal(contractPlan.totalDays, 3);
+  assert.deepEqual(
+    contractPlan.schedule.map(({ event, startDate, endDate, approximate }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+      approximate,
+    })),
+    [
+      { id: 'general', startDate: '2026-06-10', endDate: '2026-06-12', approximate: false },
+      { id: 'role-a', startDate: '2026-06-10', endDate: '2026-06-13', approximate: false },
+    ],
+  );
+  assert.equal(contractPlan.startDate, '2026-06-10');
+  assert.equal(contractPlan.endDate, '2026-06-13');
+
+  const withoutContractDate = getRoleTrainingPlan(project('parallel'), shopId, roleA.id, null);
+
+  assert.deepEqual(withoutContractDate.events.map(event => event.id), ['general', 'role-a', 'zero']);
+  assert.equal(withoutContractDate.totalDays, 3);
+  assert.deepEqual(
+    withoutContractDate.schedule.map(({ event, startDate, endDate, approximate }) => ({
+      id: event.id,
+      startDate,
+      endDate,
+      approximate,
+    })),
+    [
+      { id: 'general', startDate: '2026-06-01', endDate: '2026-06-03', approximate: true },
+      { id: 'role-a', startDate: '2026-06-01', endDate: '2026-06-04', approximate: true },
+    ],
+  );
+  assert.equal(withoutContractDate.startDate, '2026-06-01');
+  assert.equal(withoutContractDate.endDate, '2026-06-04');
+});
+
 test('sequential working-day training skips weekends for day and week durations', () => {
   const trainingProject = project('sequential');
   trainingProject.startDate = '2026-06-05';
