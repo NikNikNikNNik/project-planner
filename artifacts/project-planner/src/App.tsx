@@ -1381,7 +1381,7 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
       onPointerUp={() => { pointerDown.current = false; }}
       onPointerCancel={() => { pointerDown.current = false; }}
     />
-    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelOrientation === 'vertical' ? labelPlacement === 'bottom-0.5' ? 'left-[-32px] bottom-0.5 origin-bottom-left -rotate-90' : 'right-5 top-0.5 origin-top-right -rotate-90' : `${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`}`} style={{ background: color }}>{label}</span>
+    <span className={`absolute whitespace-nowrap rounded text-[8px] font-extrabold text-white shadow-sm ${labelOrientation === 'vertical' ? `flex h-3 items-center px-1 py-0 ${labelPlacement === 'bottom-0.5' ? 'left-[-7px] bottom-0.5 origin-bottom-left -rotate-90' : 'right-[19px] top-0.5 origin-top-right -rotate-90'}` : `px-1 py-0.5 ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`}`} style={{ background: color }}>{label}</span>
     <span className="sr-only">{fullLabel}: {fmt(date)}</span>
   </div>;
 }
