@@ -58,6 +58,7 @@ export const createProjectBodyOneSettingsRecruitmentLeadValueMin = 0;
 
 export const createProjectBodyOneSettingsOnboardingDurationMin = 0;
 
+
 export const createProjectBodyTwoAccessUsernameMin = 3;
 export const createProjectBodyTwoAccessUsernameMax = 64;
 
@@ -143,6 +144,10 @@ export const CreateProjectBody = zod.object({
   "onboardingDuration": zod.number().int().min(createProjectBodyOneSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
+  "additionalNonWorkingDates": zod.array(zod.object({
+  "date": zod.string(),
+  "name": zod.string().min(1)
+})).optional(),
   "contractDate": zod.coerce.date().nullable(),
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
@@ -175,6 +180,7 @@ export const createProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin 
 export const createProjectResponseSettingsRecruitmentLeadValueMin = 0;
 
 export const createProjectResponseSettingsOnboardingDurationMin = 0;
+
 
 
 
@@ -257,6 +263,10 @@ export const CreateProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(createProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
+  "additionalNonWorkingDates": zod.array(zod.object({
+  "date": zod.string(),
+  "name": zod.string().min(1)
+})).optional(),
   "contractDate": zod.coerce.date().nullable(),
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
@@ -292,6 +302,7 @@ export const getProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin = 0
 export const getProjectResponseSettingsRecruitmentLeadValueMin = 0;
 
 export const getProjectResponseSettingsOnboardingDurationMin = 0;
+
 
 
 
@@ -374,6 +385,10 @@ export const GetProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(getProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
+  "additionalNonWorkingDates": zod.array(zod.object({
+  "date": zod.string(),
+  "name": zod.string().min(1)
+})).optional(),
   "contractDate": zod.coerce.date().nullable(),
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
@@ -409,6 +424,7 @@ export const updateProjectBodySettingsHiringStrategyMonthsBeforeTrainingMin = 0;
 export const updateProjectBodySettingsRecruitmentLeadValueMin = 0;
 
 export const updateProjectBodySettingsOnboardingDurationMin = 0;
+
 
 
 
@@ -489,6 +505,10 @@ export const UpdateProjectBody = zod.object({
   "onboardingDuration": zod.number().int().min(updateProjectBodySettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
+  "additionalNonWorkingDates": zod.array(zod.object({
+  "date": zod.string(),
+  "name": zod.string().min(1)
+})).optional(),
   "contractDate": zod.coerce.date().nullable(),
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
@@ -516,6 +536,7 @@ export const updateProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin 
 export const updateProjectResponseSettingsRecruitmentLeadValueMin = 0;
 
 export const updateProjectResponseSettingsOnboardingDurationMin = 0;
+
 
 
 
@@ -598,6 +619,10 @@ export const UpdateProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(updateProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
+  "additionalNonWorkingDates": zod.array(zod.object({
+  "date": zod.string(),
+  "name": zod.string().min(1)
+})).optional(),
   "contractDate": zod.coerce.date().nullable(),
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
@@ -656,6 +681,7 @@ export const copyProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin = 
 export const copyProjectResponseSettingsRecruitmentLeadValueMin = 0;
 
 export const copyProjectResponseSettingsOnboardingDurationMin = 0;
+
 
 
 
@@ -738,6 +764,10 @@ export const CopyProjectResponse = zod.object({
   "onboardingDuration": zod.number().int().min(copyProjectResponseSettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
+  "additionalNonWorkingDates": zod.array(zod.object({
+  "date": zod.string(),
+  "name": zod.string().min(1)
+})).optional(),
   "contractDate": zod.coerce.date().nullable(),
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })

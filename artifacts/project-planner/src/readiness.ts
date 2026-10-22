@@ -1,4 +1,5 @@
 import type { Project } from '@workspace/api-client-react';
+import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 
 type ProjectMilestone = Project['milestones']['mc'];
 
@@ -88,26 +89,16 @@ function shiftCalendarDays(value: string, days: number) {
   return iso(date);
 }
 
-function shiftWorkingDays(value: string, days: number) {
-  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
-  let remaining = Math.abs(days);
-  const direction = days < 0 ? -1 : 1;
-  while (remaining > 0) {
-    date.setDate(date.getDate() + direction);
-    if (date.getDay() !== 0 && date.getDay() !== 6) remaining--;
-  }
-  return iso(date);
-}
-
 function legacyReadyDate(project: Project) {
   const { settings, milestones } = project;
   if (settings.readyMode === 'fixed') return settings.readyDate;
   if (!milestones.mc.date) return null;
+  const dayType = getProjectDayType(settings);
   const unit = settings.readyOffsetUnit ?? 'days';
-  const factor = unit === 'days' ? 1 : unit === 'weeks' ? (settings.dayType === 'working' ? 5 : 7) : (settings.dayType === 'working' ? 22 : 30);
+  const factor = unit === 'days' ? 1 : unit === 'weeks' ? (dayType === 'working' ? 5 : 7) : (dayType === 'working' ? 22 : 30);
   const days = Math.ceil(settings.daysBeforeMc * factor);
-  return settings.dayType === 'working'
-    ? shiftWorkingDays(milestones.mc.date, -days)
+  return dayType === 'working'
+    ? shiftKazakhstanWorkdays(milestones.mc.date, -days, settings.additionalNonWorkingDates)
     : shiftCalendarDays(milestones.mc.date, -days);
 }
 

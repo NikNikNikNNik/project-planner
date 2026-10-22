@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
-import { assignTrainingLanes, durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles } from './training-planning.ts';
+import { assignTrainingLanes, durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles, scheduleTrainingTimeline } from './training-planning.ts';
 import { createRecruitmentWorkbook } from './recruitment-export.ts';
 
 const shopId = 'shop-a';
@@ -396,6 +396,27 @@ test('manual training start date anchors a sequential event and its duration', (
     ],
   );
   assert.equal(plan.contractDate, '2026-06-10');
+});
+
+test('staffing mode determines whether role training pauses for Kazakhstan weekends and holidays', () => {
+  const local = project('sequential');
+  local.training = [training('course', 'Обучение', 1, [shopId], [], 0, 'days', '2026-03-20')];
+  local.settings = { ...local.settings, staffingMode: 'local', dayType: 'calendar' };
+  const localSchedule = scheduleTrainingTimeline(local, null);
+  assert.deepEqual(
+    [localSchedule[0].startDate, localSchedule[0].endDate],
+    ['2026-03-20', '2026-03-26'],
+  );
+
+  const shift = {
+    ...local,
+    settings: { ...local.settings, staffingMode: 'shift' as const },
+  };
+  const shiftSchedule = scheduleTrainingTimeline(shift, null);
+  assert.deepEqual(
+    [shiftSchedule[0].startDate, shiftSchedule[0].endDate],
+    ['2026-03-20', '2026-03-21'],
+  );
 });
 
 test('manual training start date overrides the parallel estimate and respects working days', () => {

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AdditionalNonWorkingDate } from './additionalNonWorkingDate';
 import type { ProjectSettingsCalculationMode } from './projectSettingsCalculationMode';
 import type { ProjectSettingsDayType } from './projectSettingsDayType';
 import type { ProjectSettingsOnboardingUnit } from './projectSettingsOnboardingUnit';
@@ -46,6 +47,7 @@ export interface ProjectSettings {
   onboardingDuration?: number;
   onboardingUnit?: ProjectSettingsOnboardingUnit;
   dayType: ProjectSettingsDayType;
+  additionalNonWorkingDates?: AdditionalNonWorkingDate[];
   /** @nullable */
   contractDate: Date | null;
   templateDataStatus?: ProjectSettingsTemplateDataStatus;

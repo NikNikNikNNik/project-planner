@@ -21,6 +21,7 @@ import {
   type Role,
 } from '@workspace/api-client-react';
 import { downloadRecruitmentWorkbook } from './recruitment-export';
+import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 import {
   assignTrainingLanes,
   durationInDays,
@@ -58,16 +59,6 @@ const fmt = (date?: string | null) => date ? new Date(`${date.slice(0, 10)}T00:0
 const formatUsd = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const shiftDate = (value: string, days: number) => { const d = new Date(`${value}T12:00:00`); d.setDate(d.getDate() + days); return iso(d); };
-const shiftWorkingDays = (value: string, days: number) => {
-  const d = new Date(`${value}T12:00:00`);
-  let left = Math.abs(days);
-  const direction = days < 0 ? -1 : 1;
-  while (left > 0) {
-    d.setDate(d.getDate() + direction);
-    if (d.getDay() !== 0 && d.getDay() !== 6) left--;
-  }
-  return iso(d);
-};
 const uid = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const addMonths = shiftCalendarMonths;
 const rawDateDiff = (a: string, b: string) => (new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86400000;
@@ -194,7 +185,9 @@ function makeProjectInput(
     training: [],
     settings: {
       calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45,
-      readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, readyShopIds, readyShopRules, dayType: 'calendar',
+      readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, readyShopIds, readyShopRules,
+      dayType: startupAnswers.staffingMode === 'local' ? 'working' : 'calendar',
+      additionalNonWorkingDates: [],
       contractDate: null, ...startupAnswers,
       salaryMedianResearchMonthsBeforeTraining: 18,
       laborMarketResearchMonthsBeforeTraining: 16,
@@ -541,6 +534,7 @@ function Planner() {
   };
 
   const project = draft && draft.id === projectId ? draft : null;
+  const projectDayType = project ? getProjectDayType(project.settings) : 'calendar';
   const totalDays = project ? dateDiff(timelineStart || project.startDate, timelineEnd || project.endDate) : 1;
   const position = (date: string) => Math.max(0, Math.min(100, (rawDateDiff(timelineStart || project!.startDate, date) / totalDays) * 100));
   const width = (a: string, b: string) => Math.max(1.6, position(b) - position(a));
@@ -614,12 +608,12 @@ function Planner() {
     setTimelineEnd(current => !current || dates[dates.length - 1] > current ? dates[dates.length - 1] : current);
   }, [project?.id, trainingTimeline, expandedRoleTimelineDates, hiringResearchMilestones]);
   const plannedTrainingDays = project
-    ? totalTrainingDays(project.training, project.settings.calculationMode, project.settings.dayType)
+    ? totalTrainingDays(project.training, project.settings.calculationMode, projectDayType)
     : 0;
   const plannedPreparationDays = plannedTrainingDays + (plannedTrainingDays > 0 ? onboardingDurationDays : 0);
   const calculatedContractDate = project && staffReadyDate
-    ? (project.settings.dayType === 'working'
-      ? shiftWorkingDays(staffReadyDate, -plannedPreparationDays)
+    ? (projectDayType === 'working'
+      ? shiftKazakhstanWorkdays(staffReadyDate, -plannedPreparationDays, project.settings.additionalNonWorkingDates)
       : shiftDate(staffReadyDate, -plannedPreparationDays))
     : null;
   const contractDate = project?.settings.contractDate ?? calculatedContractDate;
@@ -960,10 +954,7 @@ function Planner() {
                           const onboardingStartDate = rolePlan.onboardingStartDate;
                           const trainingLanes = assignTrainingLanes(rolePlan.schedule);
                           const laneCount = Math.max(1, ...trainingLanes.map(item => item.lane + 1));
-                          const roleTimelineHeight = Math.max(
-                            52,
-                            recruitmentStartDate ? 39 + laneCount * 12 : 20 + laneCount * 12,
-                          );
+                          const roleTimelineHeight = Math.max(52, 20 + laneCount * 12);
                           const onboardingLeft = onboardingStartDate ? position(onboardingStartDate) : 0;
                           const onboardingWidth = onboardingStartDate && rolePlan.startDate ? width(onboardingStartDate, rolePlan.startDate) : 0;
                           return <div key={role.id} className="flex min-h-[52px] border-t border-[#ece8df] bg-[#fdfcf8]">
@@ -994,7 +985,7 @@ function Planner() {
                                   </Tooltip.Content>
                                 </Tooltip.Portal>
                               </Tooltip.Root>}
-                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Старт рекрут." color="#b77a3e" roleSpecific labelSide="left" labelTop={21 + laneCount * 12} />}
+                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Старт рекрут." color="#b77a3e" roleSpecific labelSide="left" />}
                               {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" roleSpecific />}
                               {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {trainingLanes.map(item => <Tooltip.Root key={item.event.id} delayDuration={220}>
@@ -1029,7 +1020,7 @@ function Planner() {
                       <div className="flex min-h-10 border-b border-[#ece8df]">
                         <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 items-center gap-2 bg-[#faf8f2] px-4"><span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#e8e6f0] text-[#696182]"><Users size={13} /></span><span className="text-[10px] font-bold">Подготовка кадров</span></div>
                         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-[9px] text-[#726b82]">
-                          <span>{project.training.length} мероприятий</span><span>·</span><span>{plannedPreparationDays} {project.settings.dayType === 'working' ? 'рабочих' : 'календарных'} дней с учётом онбординга</span>
+                          <span>{project.training.length} мероприятий</span><span>·</span><span>{plannedPreparationDays} {projectDayType === 'working' ? 'рабочих' : 'календарных'} дней с учётом онбординга</span>
                           <span className="hidden sm:inline">· Длительности учитываются {project.settings.calculationMode === 'sequential' ? 'последовательно' : 'параллельно'}</span>
                         </div>
                       </div>
@@ -1060,8 +1051,8 @@ function Planner() {
                                   <h3 className="mb-2 text-xs font-extrabold">{event.title}</h3>
                                   <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] leading-relaxed">
                                     <dt className="text-[#81847c]">Категория</dt><dd className="font-semibold">{categoryNames[event.category]}</dd>
-                                    <dt className="text-[#81847c]">Длительность</dt><dd>{event.duration} {unitName} · {item.durationDays} {project.settings.dayType === 'working' ? 'рабочих' : 'календарных'} дней</dd>
-                                    {event.unit !== 'days' && <><dt className="text-[#81847c]">Условный пересчёт</dt><dd>{event.unit === 'weeks' ? (project.settings.dayType === 'working' ? '1 неделя = 5 рабочих дней' : '1 неделя = 7 календарных дней') : (project.settings.dayType === 'working' ? '1 месяц = 22 рабочих дня' : '1 месяц = 30 календарных дней')}</dd></>}
+                                    <dt className="text-[#81847c]">Длительность</dt><dd>{event.duration} {unitName} · {item.durationDays} {projectDayType === 'working' ? 'рабочих' : 'календарных'} дней</dd>
+                                    {event.unit !== 'days' && <><dt className="text-[#81847c]">Условный пересчёт</dt><dd>{event.unit === 'weeks' ? (projectDayType === 'working' ? '1 неделя = 5 рабочих дней' : '1 неделя = 7 календарных дней') : (projectDayType === 'working' ? '1 месяц = 22 рабочих дня' : '1 месяц = 30 календарных дней')}</dd></>}
                                     {event.costUsd !== undefined && <><dt className="text-[#81847c]">Стоимость</dt><dd>{formatUsd(event.costUsd)}</dd></>}
                                     <dt className="text-[#81847c]">Период</dt><dd>{fmt(item.startDate)} — {fmt(item.endDate)}</dd>
                                     <dt className="text-[#81847c]">Статус</dt><dd>{statusNames[event.status]}</dd>
@@ -1108,7 +1099,7 @@ function Planner() {
                    <div aria-label="Список обучений" tabIndex={0} className="max-h-[55vh] overflow-y-auto overscroll-contain divide-y divide-[#eee9df] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]">
                     {trainingCategories.map(category => {
                       const events = project.training.filter(event => event.category === category).sort((a, b) => a.sortOrder - b.sortOrder);
-                      const categoryDays = events.reduce((sum, event) => sum + trainingDays(event, project.settings.dayType), 0);
+                      const categoryDays = events.reduce((sum, event) => sum + trainingDays(event, projectDayType), 0);
                       return <details key={category} open className="group/training">
                         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 bg-[#faf8f2] px-4 py-2.5 text-[10px] font-bold text-[#596461]">
                           <span className="flex items-center gap-2"><ChevronDown size={12} className="transition-transform group-open/training:rotate-180" />{categoryNames[category]} <span className="font-normal text-[#8a8b82]">{events.length}</span></span>
@@ -1116,7 +1107,7 @@ function Planner() {
                         </summary>
                         {events.length > 0 ? events.map((event, eventIndex) => <div key={event.id} className="flex items-center gap-2 border-t border-[#eee9df] px-4 py-2.5">
                           <span className={`h-2 w-2 shrink-0 rounded-full ${event.status === 'completed' ? 'bg-[#587c70]' : event.status === 'in_progress' ? 'bg-[#c58b3a]' : 'bg-[#8b7ba3]'}`} />
-                          <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, project.settings.dayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}{event.startDate && <> · начало {fmt(event.startDate)}</>}{event.costUsd !== undefined && <> · {formatUsd(event.costUsd)}</>}</div></button>
+                          <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, projectDayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}{event.startDate && <> · начало {fmt(event.startDate)}</>}{event.costUsd !== undefined && <> · {formatUsd(event.costUsd)}</>}</div></button>
                           <span className="hidden rounded-full bg-[#efede5] px-2 py-1 text-[9px] font-semibold text-[#707772] sm:inline-flex">{statusNames[event.status]}</span>
                           <IconButton label="Переместить выше" onClick={() => moveTraining(event.id, -1)}><ArrowLeft size={12} className="-rotate-90" /></IconButton>
                           <IconButton label="Переместить ниже" onClick={() => moveTraining(event.id, 1)}><ArrowRight size={12} className="rotate-90" /></IconButton>
@@ -1144,6 +1135,10 @@ function Planner() {
                       onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
                     />
                     <RecruitmentLeadSettings
+                      project={project}
+                      onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
+                    />
+                    <KazakhstanHolidaySettings
                       project={project}
                       onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
                     />
@@ -1335,7 +1330,7 @@ function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
   const x = (rawDateDiff(start, now) / totalDays) * 100;
   return x >= 0 && x <= 100 ? <div className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55" style={{ left: `${x}%` }}><span className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" /></div> : null;
 }
-function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide, labelTop }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right'; labelTop?: number }) {
+function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right' }) {
   const pointerDown = useRef(false);
   const x = (rawDateDiff(start, date) / totalDays) * 100;
   if (x < 0 || x > 100) return null;
@@ -1376,7 +1371,7 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
       onPointerUp={() => { pointerDown.current = false; }}
       onPointerCancel={() => { pointerDown.current = false; }}
     />
-    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelTop === undefined ? labelPosition : ''}`} style={{ background: color, ...(labelTop === undefined ? {} : { top: `${labelTop}px` }) }}>{label}</span>
+    <span className={`absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold text-white shadow-sm ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`} style={{ background: color }}>{label}</span>
     <span className="sr-only">{fullLabel}: {fmt(date)}</span>
   </div>;
 }
@@ -1658,6 +1653,66 @@ function RecruitmentLeadSettings({ project, onChange }: { project: Project; onCh
     <p className="mt-1 text-[8px] text-[#92938a]">Дни и месяцы календарные.</p>
   </div>;
 }
+function KazakhstanHolidaySettings({ project, onChange }: { project: Project; onChange: (settings: Partial<Project['settings']>) => void }) {
+  const [date, setDate] = useState('');
+  const [name, setName] = useState('');
+  const dates = [...(project.settings.additionalNonWorkingDates ?? [])]
+    .sort((left, right) => left.date.localeCompare(right.date) || left.name.localeCompare(right.name));
+  const grouped = dates.reduce<Record<string, typeof dates>>((groups, item) => {
+    const year = item.date.slice(0, 4);
+    (groups[year] ??= []).push(item);
+    return groups;
+  }, {});
+  const addDate = () => {
+    const trimmedName = name.trim();
+    if (!date || !trimmedName || dates.some(item => item.date === date)) return;
+    onChange({
+      additionalNonWorkingDates: [...dates, { date, name: trimmedName }]
+        .sort((left, right) => left.date.localeCompare(right.date)),
+    });
+    setDate('');
+    setName('');
+  };
+  return <div className="border-t border-[#eee9df] px-4 py-3">
+    <h4 className="text-[10px] font-extrabold text-[#293640]">Подтверждённые нерабочие даты Казахстана</h4>
+    <p className="mt-0.5 text-[9px] text-[#85877e]">Повторяющиеся государственные праздники и переносы рассчитываются по закону. Добавляйте официальные даты, объявляемые отдельно на год. Учёт действует для местного персонала.</p>
+    <div className="mt-2 grid grid-cols-[minmax(0,1fr)_132px_auto] gap-2">
+      <input
+        type="text"
+        aria-label="Название нерабочего дня"
+        placeholder="Например, Курбан айт"
+        value={name}
+        onChange={event => setName(event.target.value)}
+        className="control h-8 min-w-0 px-2 text-[10px]"
+      />
+      <input
+        type="date"
+        aria-label="Дата нерабочего дня"
+        value={date}
+        onChange={event => setDate(event.target.value)}
+        className="control h-8 min-w-0 px-2 text-[10px]"
+      />
+      <button type="button" disabled={!date || !name.trim() || dates.some(item => item.date === date)} onClick={addDate} className="btn-primary h-8 rounded-md px-2 text-[9px] font-bold disabled:opacity-50">Добавить</button>
+    </div>
+    {Object.keys(grouped).length > 0 ? <div className="mt-2 max-h-36 space-y-2 overflow-y-auto pr-1">
+      {Object.entries(grouped).map(([year, items]) => <section key={year}>
+        <h5 className="text-[9px] font-extrabold text-[#68746f]">{year}</h5>
+        <ul className="mt-1 space-y-1">
+          {items.map(item => <li key={`${item.date}-${item.name}`} className="flex items-center justify-between gap-2 rounded bg-[#f6f4ed] px-2 py-1 text-[9px]">
+            <span className="truncate">{fmt(item.date)} · {item.name}</span>
+            <button
+              type="button"
+              aria-label={`Удалить нерабочую дату ${item.date}: ${item.name}`}
+              title="Удалить дату"
+              onClick={() => onChange({ additionalNonWorkingDates: dates.filter(value => value.date !== item.date || value.name !== item.name) })}
+              className="shrink-0 text-[#a7472e] hover:text-[#7b2e20]"
+            ><Trash2 size={12} /></button>
+          </li>)}
+        </ul>
+      </section>)}
+    </div> : <p className="mt-2 text-[9px] text-[#92938a]">Дополнительные даты пока не заданы.</p>}
+  </div>;
+}
 function OnboardingSettings({ project, onChange }: { project: Project; onChange: (settings: Partial<Project['settings']>) => void }) {
   const duration = project.settings.onboardingDuration ?? 0;
   const unit = project.settings.onboardingUnit ?? 'days';
@@ -1744,6 +1799,7 @@ function PhaseModal({ phase, project, onClose, onSave, onDelete }: { phase: Phas
   </Modal>;
 }
 function TrainingModal({ event, project, onClose, onSave, onDelete, presetScope }: { event: TrainingEvent | null; project: Project; onClose: () => void; onSave: (event: TrainingEvent) => void; onDelete: () => void; presetScope?: { shopIds: string[]; roleIds: string[] } }) {
+  const dayType = getProjectDayType(project.settings);
   const [title, setTitle] = useState(event?.title ?? '');
   const [category, setCategory] = useState<TrainingEvent['category']>(event?.category ?? 'mandatory');
   const [duration, setDuration] = useState(event?.duration ?? 5);
@@ -1786,6 +1842,7 @@ function TrainingModal({ event, project, onClose, onSave, onDelete, presetScope 
   </Modal>;
 }
 function RolesModal({ project, onClose, onSave, onAddTraining }: { project: Project; onClose: () => void; onSave: (shops: Project['shops']) => void; onAddTraining: (event: TrainingEvent, shopId: string, role: Role) => void }) {
+  const dayType = getProjectDayType(project.settings);
   const [shops, setShops] = useState(() => project.shops.map(shop => ({
     ...shop,
     roles: shop.roles.map(role => ({ ...role, headcount: role.headcount ?? 1 })),
@@ -1846,7 +1903,7 @@ function RolesModal({ project, onClose, onSave, onAddTraining }: { project: Proj
                   {assignedTrainings.length ? <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
                     {assignedTrainings.map(event => <li key={event.id} className="border-t border-[#e9e5dc] pt-2 first:border-0 first:pt-0">
                       <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-bold">{event.title}</span><span className="shrink-0 text-[9px] text-[#777b76]">{statusNames[event.status]}</span></div>
-                      <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[event.category]} · {event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, project.settings.dayType)} дн.{event.costUsd !== undefined ? ` · ${formatUsd(event.costUsd)}` : ''}</p>
+                      <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[event.category]} · {event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, dayType)} дн.{event.costUsd !== undefined ? ` · ${formatUsd(event.costUsd)}` : ''}</p>
                       {event.note && <p className="mt-1 whitespace-pre-wrap text-[9px] leading-relaxed text-[#6d7470]">{event.note}</p>}
                     </li>)}
                   </ul> : <p className="text-[10px] text-[#777b76]">Для этой роли пока не назначено обучение.</p>}
@@ -1873,18 +1930,19 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
   const [settings, setSettings] = useState(project.settings);
   const [startDate, setStartDate] = useState(project.startDate);
   const [endDate, setEndDate] = useState(project.endDate);
+  const dayType = getProjectDayType(settings);
   const readyDate = getProjectReadyDate({ ...project, settings });
-  const plannedDays = totalTrainingDays(project.training, settings.calculationMode, settings.dayType);
+  const plannedDays = totalTrainingDays(project.training, settings.calculationMode, dayType);
   const onboardingDays = plannedDays > 0
     ? durationInDays(
       project.settings.onboardingDuration ?? 0,
       project.settings.onboardingUnit ?? 'days',
-      settings.dayType,
+      dayType,
     )
     : 0;
   const preparationDays = plannedDays + onboardingDays;
   const autoContractDate = readyDate
-    ? (settings.dayType === 'working' ? shiftWorkingDays(readyDate, -preparationDays) : shiftDate(readyDate, -preparationDays))
+    ? (dayType === 'working' ? shiftKazakhstanWorkdays(readyDate, -preparationDays, settings.additionalNonWorkingDates) : shiftDate(readyDate, -preparationDays))
     : null;
   const contractGap = settings.contractDate && autoContractDate
     ? rawDateDiff(autoContractDate, settings.contractDate)
@@ -1904,7 +1962,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
           <p className="mt-1">Расчётная дата: <strong>{fmt(readyDate)}</strong>.</p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3"><Field label="Тип дней"><select className="control h-10 w-full px-2 text-xs" value={settings.dayType} onChange={e => setSettings(s => ({ ...s, dayType: e.target.value as typeof s.dayType }))}><option value="working">Рабочие дни</option><option value="calendar">Календарные дни</option></select></Field><Field label="Ручная дата контракта"><input type="date" className="control h-10 w-full px-2 text-xs" value={settings.contractDate ?? ''} onChange={e => setSettings(s => ({ ...s, contractDate: e.target.value || null }))} /></Field></div>
+      <div className="grid grid-cols-2 gap-3"><Field label="Календарь обучения"><div className="control flex h-10 items-center px-2 text-xs">{dayType === 'working' ? 'Местный персонал · рабочие дни РК' : 'Вахта · календарные дни'}</div></Field><Field label="Ручная дата контракта"><input type="date" className="control h-10 w-full px-2 text-xs" value={settings.contractDate ?? ''} onChange={e => setSettings(s => ({ ...s, contractDate: e.target.value || null }))} /></Field></div>
       <div className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f7773]">
          Автоматическая дата контракта: <strong>{fmt(autoContractDate)}</strong>. Учтено {plannedDays} дн. обучения и {onboardingDays} дн. онбординга; режим — {settings.calculationMode === 'sequential' ? 'последовательно' : 'параллельно'}.
         {settings.contractDate && contractGap > 0 && <p className="mt-1 font-bold text-[#a7472e]">Ручная дата позже расчётной на {Math.ceil(contractGap)} дн.</p>}

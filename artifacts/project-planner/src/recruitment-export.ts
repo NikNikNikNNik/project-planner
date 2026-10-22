@@ -1,5 +1,6 @@
 import type ExcelJS from 'exceljs';
 import type { Project, Role, TrainingEvent } from '@workspace/api-client-react';
+import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 import { getProjectReadyDate, getRecruitmentStartDate, getShopReadyDate } from './readiness.ts';
 import { durationInDays } from './training-planning.ts';
 
@@ -28,17 +29,6 @@ function shiftCalendarDays(value: string, days: number) {
   return toIsoDate(date);
 }
 
-function shiftWorkingDays(value: string, days: number) {
-  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
-  let remaining = Math.abs(days);
-  const direction = days < 0 ? -1 : 1;
-  while (remaining > 0) {
-    date.setDate(date.getDate() + direction);
-    if (date.getDay() !== 0 && date.getDay() !== 6) remaining--;
-  }
-  return toIsoDate(date);
-}
-
 function trainingDays(event: TrainingEvent, dayType: 'calendar' | 'working') {
   const factor = event.unit === 'days'
     ? 1
@@ -53,30 +43,31 @@ function totalTrainingDays(events: TrainingEvent[], mode: 'sequential' | 'parall
   return mode === 'parallel' ? Math.max(0, ...durations) : durations.reduce((sum, duration) => sum + duration, 0);
 }
 
-function getRoleTrainingDays(project: Project, role: Role, shopId: string) {
+function getRoleTrainingDays(project: Project, role: Role, shopId: string, dayType: 'calendar' | 'working') {
   const events = project.training.filter(event =>
     event.shopIds.includes(shopId) && (!event.roleIds.length || event.roleIds.includes(role.id)),
   );
-  return totalTrainingDays(events, project.settings.calculationMode, project.settings.dayType);
+  return totalTrainingDays(events, project.settings.calculationMode, dayType);
 }
 
 function buildRows(project: Project): RecruitmentRow[] {
+  const dayType = getProjectDayType(project.settings);
   return project.shops.flatMap(shop => {
     const readyDate = getShopReadyDate(project, shop.id);
     return shop.roles
       .filter(role => role.visible && (role.headcount ?? 1) > 0)
       .map(role => {
-      const days = getRoleTrainingDays(project, role, shop.id);
+        const days = getRoleTrainingDays(project, role, shop.id, dayType);
       const onboardingDays = days > 0
         ? durationInDays(
           project.settings.onboardingDuration ?? 0,
           project.settings.onboardingUnit ?? 'days',
-          project.settings.dayType,
+          dayType,
         )
         : 0;
       const deadline = project.settings.contractDate ?? (readyDate
-        ? project.settings.dayType === 'working'
-          ? shiftWorkingDays(readyDate, -(days + onboardingDays))
+        ? dayType === 'working'
+          ? shiftKazakhstanWorkdays(readyDate, -(days + onboardingDays), project.settings.additionalNonWorkingDates)
           : shiftCalendarDays(readyDate, -(days + onboardingDays))
         : null);
       return {
@@ -108,6 +99,7 @@ export async function createRecruitmentWorkbook(project: Project) {
   const readyDate = getProjectReadyDate(project);
   const recruitmentRows = buildRows(project);
   if (!recruitmentRows.length) return null;
+  const dayType = getProjectDayType(project.settings);
   const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Планировщик проектов';
@@ -122,8 +114,8 @@ export async function createRecruitmentWorkbook(project: Project) {
     : project.settings.templateDataStatus === 'unconfirmed'
       ? 'ПРЕДВАРИТЕЛЬНЫЕ ДАННЫЕ: даты, этапы и численность ролей из шаблона не подтверждены пользователем.'
       : 'ИСТОЧНИК НЕ ОТСЛЕЖИВАЛСЯ: проверьте даты, этапы и численность ролей до использования этой выгрузки.';
-  const durationConversion = project.settings.dayType === 'working'
-    ? 'Условный пересчёт обучения: неделя = 5 рабочих дней, месяц = 22 рабочих дня.'
+  const durationConversion = dayType === 'working'
+    ? 'Условный пересчёт обучения: неделя = 5 рабочих дней, месяц = 22 рабочих дня. Рабочие дни исключают субботы, воскресенья и праздники Казахстана; подтверждённые дополнительные даты задаются в проекте.'
     : 'Условный пересчёт обучения: неделя = 7 календарных дней, месяц = 30 календарных дней.';
   const addIntro = (sheet: ExcelJS.Worksheet, width: number, note: string) => {
     sheet.addRow([`План набора персонала · ${project.title}`]);

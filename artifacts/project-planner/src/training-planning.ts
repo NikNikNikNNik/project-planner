@@ -1,4 +1,5 @@
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
+import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 
 export type ScheduledTraining = {
   event: TrainingEvent;
@@ -68,17 +69,6 @@ function shiftDate(value: string, days: number) {
   return iso(date);
 }
 
-function shiftWorkingDays(value: string, days: number) {
-  const date = new Date(`${value}T12:00:00`);
-  let remaining = Math.abs(days);
-  const direction = days < 0 ? -1 : 1;
-  while (remaining > 0) {
-    date.setDate(date.getDate() + direction);
-    if (date.getDay() !== 0 && date.getDay() !== 6) remaining--;
-  }
-  return iso(date);
-}
-
 export function durationInDays(
   duration: number,
   unit: TrainingEvent['unit'],
@@ -96,7 +86,7 @@ export function getOnboardingDurationDays(project: Project) {
   return durationInDays(
     project.settings.onboardingDuration ?? 0,
     project.settings.onboardingUnit ?? 'days',
-    project.settings.dayType,
+    getProjectDayType(project.settings),
   );
 }
 
@@ -105,11 +95,12 @@ export function getOnboardingStartDate(
   duration: number,
   unit: 'days' | 'weeks',
   dayType: 'calendar' | 'working',
+  additionalNonWorkingDates: Project['settings']['additionalNonWorkingDates'] = [],
 ) {
   const days = durationInDays(duration, unit, dayType);
   if (!trainingStartDate || days === 0) return null;
   return dayType === 'working'
-    ? shiftWorkingDays(trainingStartDate, -days)
+    ? shiftKazakhstanWorkdays(trainingStartDate, -days, additionalNonWorkingDates)
     : shiftDate(trainingStartDate, -days);
 }
 
@@ -130,11 +121,12 @@ export function totalTrainingDays(
 
 export function scheduleTrainingTimeline(project: Project, readyDate: string | null): ScheduledTraining[] {
   const sorted = [...project.training].sort((a, b) => a.sortOrder - b.sortOrder);
-  const dayType = project.settings.dayType;
+  const dayType = getProjectDayType(project.settings);
+  const additionalNonWorkingDates = project.settings.additionalNonWorkingDates;
   const anchor = readyDate ?? project.settings.contractDate ?? project.startDate;
   const approximate = !readyDate && !project.settings.contractDate;
   const shift = (date: string, days: number) =>
-    dayType === 'working' ? shiftWorkingDays(date, days) : shiftDate(date, days);
+    dayType === 'working' ? shiftKazakhstanWorkdays(date, days, additionalNonWorkingDates) : shiftDate(date, days);
 
   if (project.settings.calculationMode === 'parallel') {
     return sorted.flatMap(event => {
@@ -198,14 +190,15 @@ export function getRoleTrainingPlan(
 ): RoleTrainingPlan {
   const events = getRoleTrainingEvents(project.training, shopId, roleId);
   const onboardingDays = getOnboardingDurationDays(project);
-  const hasTraining = events.some(event => trainingDays(event, project.settings.dayType) > 0);
+  const dayType = getProjectDayType(project.settings);
+  const hasTraining = events.some(event => trainingDays(event, dayType) > 0);
   const scheduleProject = !readyDate && project.settings.contractDate && hasTraining && onboardingDays > 0
     ? {
         ...project,
         settings: {
           ...project.settings,
-          contractDate: project.settings.dayType === 'working'
-            ? shiftWorkingDays(project.settings.contractDate, onboardingDays)
+          contractDate: dayType === 'working'
+            ? shiftKazakhstanWorkdays(project.settings.contractDate, onboardingDays, project.settings.additionalNonWorkingDates)
             : shiftDate(project.settings.contractDate, onboardingDays),
         },
       }
@@ -222,13 +215,14 @@ export function getRoleTrainingPlan(
     startDate,
     onboardingDurationDays,
     'days',
-    project.settings.dayType,
+    dayType,
+    project.settings.additionalNonWorkingDates,
   );
   const approximateContractDate = schedule.some(item => item.approximate);
   const contractDate = approximateContractDate
     ? null
     : onboardingStartDate ?? startDate ?? readyDate ?? project.settings.contractDate;
-  const totalDays = totalTrainingDays(events, project.settings.calculationMode, project.settings.dayType);
+  const totalDays = totalTrainingDays(events, project.settings.calculationMode, dayType);
 
   return {
     events,

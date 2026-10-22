@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './additionalNonWorkingDate';
 export * from './healthStatus';
 export * from './milestone';
 export * from './milestoneShopDates';

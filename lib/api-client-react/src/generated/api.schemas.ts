@@ -210,6 +210,12 @@ export const ProjectSettingsTemplateDataStatus = {
   confirmed: 'confirmed',
 } as const;
 
+export interface AdditionalNonWorkingDate {
+  date: string;
+  /** @minLength 1 */
+  name: string;
+}
+
 export interface ProjectSettings {
   calculationMode: ProjectSettingsCalculationMode;
   readyMode: ProjectSettingsReadyMode;
@@ -240,6 +246,7 @@ export interface ProjectSettings {
   onboardingDuration?: number;
   onboardingUnit?: ProjectSettingsOnboardingUnit;
   dayType: ProjectSettingsDayType;
+  additionalNonWorkingDates?: AdditionalNonWorkingDate[];
   /** @nullable */
   contractDate: string | null;
   templateDataStatus?: ProjectSettingsTemplateDataStatus;

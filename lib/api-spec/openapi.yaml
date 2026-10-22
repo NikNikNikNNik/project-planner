@@ -293,8 +293,18 @@ components:
         onboardingDuration: { type: integer, minimum: 0 }
         onboardingUnit: { type: string, enum: [days, weeks] }
         dayType: { type: string, enum: [calendar, working] }
+        additionalNonWorkingDates:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdditionalNonWorkingDate"
         contractDate: { type: ["string", "null"], format: date }
         templateDataStatus: { type: string, enum: [unconfirmed, confirmed] }
+    AdditionalNonWorkingDate:
+      type: object
+      required: [date, name]
+      properties:
+        date: { type: string }
+        name: { type: string, minLength: 1 }
     ReadyShopRule:
       type: object
       required: [monthsBefore, milestone]
