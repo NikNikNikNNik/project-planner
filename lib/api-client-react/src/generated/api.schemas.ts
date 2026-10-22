@@ -154,6 +154,30 @@ export const ProjectSettingsReadyMilestone = {
   rfsu: 'rfsu',
 } as const;
 
+export type ProjectSettingsStaffingMode = typeof ProjectSettingsStaffingMode[keyof typeof ProjectSettingsStaffingMode];
+
+
+export const ProjectSettingsStaffingMode = {
+  shift: 'shift',
+  local: 'local',
+} as const;
+
+export type ProjectSettingsRecruitmentLeadUnit = typeof ProjectSettingsRecruitmentLeadUnit[keyof typeof ProjectSettingsRecruitmentLeadUnit];
+
+
+export const ProjectSettingsRecruitmentLeadUnit = {
+  days: 'days',
+  months: 'months',
+} as const;
+
+export type ProjectSettingsOnboardingUnit = typeof ProjectSettingsOnboardingUnit[keyof typeof ProjectSettingsOnboardingUnit];
+
+
+export const ProjectSettingsOnboardingUnit = {
+  days: 'days',
+  weeks: 'weeks',
+} as const;
+
 export type ProjectSettingsDayType = typeof ProjectSettingsDayType[keyof typeof ProjectSettingsDayType];
 
 
@@ -174,6 +198,22 @@ export interface ProjectSettings {
   readyMonthsBefore?: number;
   readyMilestone?: ProjectSettingsReadyMilestone;
   readyShopIds?: string[];
+  staffingMode?: ProjectSettingsStaffingMode;
+  salaryMedianResearchDone?: boolean;
+  /** @minimum 0 */
+  salaryMedianResearchMonthsBeforeTraining?: number;
+  laborMarketResearchDone?: boolean;
+  /** @minimum 0 */
+  laborMarketResearchMonthsBeforeTraining?: number;
+  hiringStrategyDone?: boolean;
+  /** @minimum 0 */
+  hiringStrategyMonthsBeforeTraining?: number;
+  /** @minimum 0 */
+  recruitmentLeadValue?: number;
+  recruitmentLeadUnit?: ProjectSettingsRecruitmentLeadUnit;
+  /** @minimum 0 */
+  onboardingDuration?: number;
+  onboardingUnit?: ProjectSettingsOnboardingUnit;
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: string | null;
@@ -213,6 +253,27 @@ export interface ProjectInput {
   milestones: ProjectInputMilestones;
   training: TrainingEvent[];
   settings: ProjectSettings;
+}
+
+export interface ProjectAccessCredentials {
+  /**
+     * @minLength 3
+     * @maxLength 64
+     */
+  username: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  password: string;
+}
+
+export type ProjectCreateInput = ProjectInput & {
+  access: ProjectAccessCredentials;
+};
+
+export interface ProjectAccessResponse {
+  authenticated: boolean;
 }
 
 export interface PlanningSummary {

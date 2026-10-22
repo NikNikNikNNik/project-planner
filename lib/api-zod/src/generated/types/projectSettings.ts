@@ -7,9 +7,12 @@
  */
 import type { ProjectSettingsCalculationMode } from './projectSettingsCalculationMode';
 import type { ProjectSettingsDayType } from './projectSettingsDayType';
+import type { ProjectSettingsOnboardingUnit } from './projectSettingsOnboardingUnit';
 import type { ProjectSettingsReadyMilestone } from './projectSettingsReadyMilestone';
 import type { ProjectSettingsReadyMode } from './projectSettingsReadyMode';
 import type { ProjectSettingsReadyOffsetUnit } from './projectSettingsReadyOffsetUnit';
+import type { ProjectSettingsRecruitmentLeadUnit } from './projectSettingsRecruitmentLeadUnit';
+import type { ProjectSettingsStaffingMode } from './projectSettingsStaffingMode';
 
 export interface ProjectSettings {
   calculationMode: ProjectSettingsCalculationMode;
@@ -23,6 +26,22 @@ export interface ProjectSettings {
   readyMonthsBefore?: number;
   readyMilestone?: ProjectSettingsReadyMilestone;
   readyShopIds?: string[];
+  staffingMode?: ProjectSettingsStaffingMode;
+  salaryMedianResearchDone?: boolean;
+  /** @minimum 0 */
+  salaryMedianResearchMonthsBeforeTraining?: number;
+  laborMarketResearchDone?: boolean;
+  /** @minimum 0 */
+  laborMarketResearchMonthsBeforeTraining?: number;
+  hiringStrategyDone?: boolean;
+  /** @minimum 0 */
+  hiringStrategyMonthsBeforeTraining?: number;
+  /** @minimum 0 */
+  recruitmentLeadValue?: number;
+  recruitmentLeadUnit?: ProjectSettingsRecruitmentLeadUnit;
+  /** @minimum 0 */
+  onboardingDuration?: number;
+  onboardingUnit?: ProjectSettingsOnboardingUnit;
   dayType: ProjectSettingsDayType;
   /** @nullable */
   contractDate: Date | null;

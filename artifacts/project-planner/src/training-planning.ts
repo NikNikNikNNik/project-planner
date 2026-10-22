@@ -74,13 +74,34 @@ function shiftWorkingDays(value: string, days: number) {
   return iso(date);
 }
 
-export function trainingDays(event: TrainingEvent, dayType: 'calendar' | 'working') {
-  const factor = event.unit === 'days'
+export function durationInDays(
+  duration: number,
+  unit: TrainingEvent['unit'],
+  dayType: 'calendar' | 'working',
+) {
+  const factor = unit === 'days'
     ? 1
-    : event.unit === 'weeks'
+    : unit === 'weeks'
       ? (dayType === 'working' ? 5 : 7)
       : (dayType === 'working' ? 22 : 30);
-  return Math.max(0, Math.ceil(event.duration * factor));
+  return Math.max(0, Math.ceil(duration * factor));
+}
+
+export function getOnboardingStartDate(
+  trainingStartDate: string | null,
+  duration: number,
+  unit: 'days' | 'weeks',
+  dayType: 'calendar' | 'working',
+) {
+  const days = durationInDays(duration, unit, dayType);
+  if (!trainingStartDate || days === 0) return null;
+  return dayType === 'working'
+    ? shiftWorkingDays(trainingStartDate, -days)
+    : shiftDate(trainingStartDate, -days);
+}
+
+export function trainingDays(event: TrainingEvent, dayType: 'calendar' | 'working') {
+  return durationInDays(event.duration, event.unit, dayType);
 }
 
 export function totalTrainingDays(

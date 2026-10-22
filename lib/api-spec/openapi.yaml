@@ -49,7 +49,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProjectInput"
+              $ref: "#/components/schemas/ProjectCreateInput"
       responses:
         "201":
           description: Created project
@@ -114,6 +114,12 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectAccessCredentials"
       responses:
         "201":
           description: Copied project
@@ -123,6 +129,44 @@ paths:
                 $ref: "#/components/schemas/Project"
         "404":
           description: Project not found
+  /projects/{projectId}/access:
+    post:
+      operationId: authenticateProject
+      tags: [projects]
+      summary: Set credentials for an unprotected project or authenticate
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectAccessCredentials"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectAccessResponse"
+        "401":
+          description: Invalid credentials
+        "404":
+          description: Project not found
+        "429":
+          description: Too many attempts
+  /project-access/logout:
+    post:
+      operationId: logoutProjectAccess
+      tags: [projects]
+      summary: Clear the current project access session
+      responses:
+        "204":
+          description: Session cleared
   /planning/summary:
     get:
       operationId: getPlanningSummary
@@ -233,6 +277,17 @@ components:
         readyShopIds:
           type: array
           items: { type: string }
+        staffingMode: { type: string, enum: [shift, local] }
+        salaryMedianResearchDone: { type: boolean }
+        salaryMedianResearchMonthsBeforeTraining: { type: integer, minimum: 0 }
+        laborMarketResearchDone: { type: boolean }
+        laborMarketResearchMonthsBeforeTraining: { type: integer, minimum: 0 }
+        hiringStrategyDone: { type: boolean }
+        hiringStrategyMonthsBeforeTraining: { type: integer, minimum: 0 }
+        recruitmentLeadValue: { type: integer, minimum: 0 }
+        recruitmentLeadUnit: { type: string, enum: [days, months] }
+        onboardingDuration: { type: integer, minimum: 0 }
+        onboardingUnit: { type: string, enum: [days, weeks] }
         dayType: { type: string, enum: [calendar, working] }
         contractDate: { type: ["string", "null"], format: date }
     Project:
@@ -283,6 +338,25 @@ components:
           type: array
           items: { $ref: "#/components/schemas/TrainingEvent" }
         settings: { $ref: "#/components/schemas/ProjectSettings" }
+    ProjectAccessCredentials:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 64 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    ProjectCreateInput:
+      allOf:
+        - $ref: "#/components/schemas/ProjectInput"
+        - type: object
+          required: [access]
+          properties:
+            access:
+              $ref: "#/components/schemas/ProjectAccessCredentials"
+    ProjectAccessResponse:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated: { type: boolean }
     PlanningSummary:
       type: object
       required: [projectCount, phaseCount, trainingCount, activeTrainingCount]

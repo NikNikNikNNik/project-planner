@@ -15,6 +15,63 @@ export function shiftCalendarMonths(value: string, months: number) {
   return iso(target);
 }
 
+export const recruitmentLeadDefaults = {
+  value: 60,
+  unit: 'days',
+} as const;
+
+export function getRecruitmentStartDate(
+  contractDate: string | null,
+  value: number = recruitmentLeadDefaults.value,
+  unit: 'days' | 'months' = recruitmentLeadDefaults.unit,
+) {
+  if (!contractDate) return null;
+  return unit === 'months'
+    ? shiftCalendarMonths(contractDate, -value)
+    : shiftCalendarDays(contractDate, -value);
+}
+
+export const hiringResearchConfig = [
+  {
+    id: 'salary-median',
+    statusKey: 'salaryMedianResearchDone',
+    monthsKey: 'salaryMedianResearchMonthsBeforeTraining',
+    label: 'Исследование медианы ЗП',
+    defaultMonths: 18,
+    color: '#9a6c9b',
+  },
+  {
+    id: 'labor-market',
+    statusKey: 'laborMarketResearchDone',
+    monthsKey: 'laborMarketResearchMonthsBeforeTraining',
+    label: 'Исследование рынка трудовых резервов',
+    defaultMonths: 16,
+    color: '#537c72',
+  },
+  {
+    id: 'hiring-strategy',
+    statusKey: 'hiringStrategyDone',
+    monthsKey: 'hiringStrategyMonthsBeforeTraining',
+    label: 'Стратегия найма',
+    defaultMonths: 12,
+    color: '#b77a3e',
+  },
+] as const;
+
+export function getHiringResearchMilestones(project: Project, firstTrainingStart: string | null) {
+  if (!firstTrainingStart) return [];
+
+  return hiringResearchConfig.flatMap(item => {
+    if (project.settings[item.statusKey] !== false) return [];
+    const months = project.settings[item.monthsKey] ?? item.defaultMonths;
+    return [{
+      ...item,
+      months,
+      date: shiftCalendarMonths(firstTrainingStart, -months),
+    }];
+  });
+}
+
 export function getMilestoneDateForShop(milestone: ProjectMilestone, shopId: string) {
   const dates = milestone.shopDates;
   if (dates && Object.prototype.hasOwnProperty.call(dates, shopId)) return dates[shopId] ?? null;

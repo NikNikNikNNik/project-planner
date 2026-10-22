@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
+  authenticateProject,
+  logoutProjectAccess,
   useCopyProject,
   useCreateProject,
   useDeleteProject,
@@ -20,6 +22,8 @@ import {
 } from '@workspace/api-client-react';
 import { downloadRecruitmentWorkbook } from './recruitment-export';
 import {
+  durationInDays,
+  getOnboardingStartDate,
   getRoleTrainingPlan,
   getShopRoleSummary,
   reconcileTrainingRoles,
@@ -29,10 +33,14 @@ import {
 } from './training-planning';
 import {
   commonMilestoneDate,
+  getHiringResearchMilestones,
   getMilestoneDateForShop,
   getProjectReadyDate,
+  getRecruitmentStartDate,
   getShopReadyDate,
+  hiringResearchConfig,
   isMilestoneApplicableToShop,
+  recruitmentLeadDefaults,
   shiftCalendarMonths,
   withMilestoneShopDate,
 } from './readiness';
@@ -93,6 +101,17 @@ const defaultShopOptions = [
   { id: 'shop-4', name: 'ОЗХ' },
 ] as const;
 
+type WorkforceMode = 'shift' | 'local';
+type OnboardingUnit = 'days' | 'weeks';
+type StartupAnswers = {
+  staffingMode: WorkforceMode;
+  salaryMedianResearchDone: boolean;
+  laborMarketResearchDone: boolean;
+  hiringStrategyDone: boolean;
+  onboardingDuration: number;
+  onboardingUnit: OnboardingUnit;
+};
+
 function defaultMilestoneDates() {
   const start = addMonths(iso(new Date()), 1);
   return { mc: addMonths(start, 14), rfsu: addMonths(start, 20) };
@@ -105,6 +124,7 @@ function makeProjectInput(
   readyShopIds: string[],
   mcDates: Record<string, string | null>,
   rfsuDates: Record<string, string | null>,
+  startupAnswers: StartupAnswers,
 ): ProjectInput {
   const today = iso(new Date());
   const start = addMonths(today, 1);
@@ -166,7 +186,16 @@ function makeProjectInput(
       rfsu: { date: sharedDate(rfsuDates), note: null, shopIds, shopDates: rfsuDates },
     },
     training: [],
-    settings: { calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45, readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, readyShopIds, dayType: 'calendar', contractDate: null },
+    settings: {
+      calculationMode: 'sequential', readyMode: 'relative', readyDate: null, daysBeforeMc: 45,
+      readyOffsetUnit: 'days', readyMonthsBefore, readyMilestone, readyShopIds, dayType: 'calendar',
+      contractDate: null, ...startupAnswers,
+      salaryMedianResearchMonthsBeforeTraining: 18,
+      laborMarketResearchMonthsBeforeTraining: 16,
+      hiringStrategyMonthsBeforeTraining: 12,
+      recruitmentLeadValue: recruitmentLeadDefaults.value,
+      recruitmentLeadUnit: recruitmentLeadDefaults.unit,
+    },
   };
 }
 
@@ -192,19 +221,44 @@ function Planner() {
   const summaryQuery = useGetPlanningSummary();
   const projects = projectsQuery.data ?? [];
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [accessGrantedId, setAccessGrantedId] = useState<string | null>(null);
   const activeSummary = projects.find(p => p.id === activeId) ?? projects[0];
+  const activeProjectIndex = Math.max(0, projects.findIndex(p => p.id === activeSummary?.id));
   const projectId = activeId ?? activeSummary?.id ?? '';
-  const projectQuery = useGetProject(projectId, { query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) } });
+  const projectQuery = useGetProject(projectId, { query: { enabled: !!projectId && accessGrantedId === projectId, queryKey: getGetProjectQueryKey(projectId) } });
   const createMutation = useCreateProject();
   const deleteMutation = useDeleteProject();
   const copyMutation = useCopyProject();
   const updateMutation = useUpdateProject();
   const [draft, setDraft] = useState<Project | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
-  const [modal, setModal] = useState<'new' | 'phase' | 'training' | 'roles' | 'settings' | null>(null);
+  const [modal, setModal] = useState<'startup' | 'new' | 'access' | 'copy' | 'phase' | 'training' | 'roles' | 'settings' | null>(null);
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null);
   const [editingTraining, setEditingTraining] = useState<TrainingEvent | null>(null);
   const [newTitle, setNewTitle] = useState('');
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [accessUsername, setAccessUsername] = useState('');
+  const [accessPassword, setAccessPassword] = useState('');
+  const [accessReady, setAccessReady] = useState(false);
+  const [accessError, setAccessError] = useState('');
+  const [accessSubmitting, setAccessSubmitting] = useState(false);
+  const [copyUsername, setCopyUsername] = useState('');
+  const [copyPassword, setCopyPassword] = useState('');
+  const [newStaffingMode, setNewStaffingMode] = useState<WorkforceMode | ''>('');
+  const [newSalaryMedianResearchDone, setNewSalaryMedianResearchDone] = useState<boolean | null>(null);
+  const [newLaborMarketResearchDone, setNewLaborMarketResearchDone] = useState<boolean | null>(null);
+  const [newHiringStrategyDone, setNewHiringStrategyDone] = useState<boolean | null>(null);
+  const [newOnboardingDuration, setNewOnboardingDuration] = useState('');
+  const [newOnboardingUnit, setNewOnboardingUnit] = useState<OnboardingUnit | ''>('');
+  const startupAnswersComplete = newStaffingMode !== '' &&
+    newSalaryMedianResearchDone !== null &&
+    newLaborMarketResearchDone !== null &&
+    newHiringStrategyDone !== null &&
+    newOnboardingDuration !== '' &&
+    Number.isInteger(Number(newOnboardingDuration)) &&
+    Number(newOnboardingDuration) >= 0 &&
+    newOnboardingUnit !== '';
   const [newReadyMonths, setNewReadyMonths] = useState('');
   const [newReadyMilestone, setNewReadyMilestone] = useState<'' | 'mc' | 'rfsu'>('');
   const [newReadyShopIds, setNewReadyShopIds] = useState<string[]>([]);
@@ -224,9 +278,6 @@ function Planner() {
   const phaseDragRef = useRef<{ id: string; x: number; start: string; end: string; span: number; mode: 'move' | 'start' | 'end' } | null>(null);
   const phaseMovedRef = useRef(false);
 
-  useEffect(() => {
-    if (!activeId && projects.length) setActiveId(projects[0].id);
-  }, [activeId, projects]);
   useEffect(() => {
     const data = projectQuery.data;
     if (data && data.id !== initializedId.current) {
@@ -271,6 +322,14 @@ function Planner() {
     const dates = defaultMilestoneDates();
     const shopIds = defaultShopOptions.map(shop => shop.id);
     setNewTitle('');
+    setNewUsername('');
+    setNewPassword('');
+    setNewStaffingMode('');
+    setNewSalaryMedianResearchDone(null);
+    setNewLaborMarketResearchDone(null);
+    setNewHiringStrategyDone(null);
+    setNewOnboardingDuration('');
+    setNewOnboardingUnit('');
     setNewReadyMonths('');
     setNewReadyMilestone('');
     setNewReadyShopIds(shopIds);
@@ -278,7 +337,7 @@ function Planner() {
     setNewRfsuDates(Object.fromEntries(shopIds.map(id => [id, dates.rfsu])));
     setNewMcAllDate(dates.mc);
     setNewRfsuAllDate(dates.rfsu);
-    setModal('new');
+    setModal('startup');
   };
   const setAllNewMilestoneDates = (code: 'mc' | 'rfsu', date: string) => {
     const dates = Object.fromEntries(defaultShopOptions.map(shop => [shop.id, date]));
@@ -307,31 +366,100 @@ function Planner() {
     e.preventDefault();
     const title = newTitle.trim();
     const readyMonths = Number(newReadyMonths);
+    const onboardingDuration = Number(newOnboardingDuration);
     const allShopIds = defaultShopOptions.map(shop => shop.id);
     const datesComplete = allShopIds.every(shopId => !!newMcDates[shopId] && !!newRfsuDates[shopId]);
-    if (!title || newReadyMonths === '' || !Number.isInteger(readyMonths) || readyMonths < 0 || !newReadyMilestone || newReadyShopIds.length === 0 || !datesComplete) return;
-    createMutation.mutate({ data: makeProjectInput(title, readyMonths, newReadyMilestone, newReadyShopIds, newMcDates, newRfsuDates) }, {
+    if (
+      !title || newReadyMonths === '' || !Number.isInteger(readyMonths) || readyMonths < 0 ||
+      !newReadyMilestone || newReadyShopIds.length === 0 || !datesComplete ||
+      !newStaffingMode || newSalaryMedianResearchDone === null ||
+      newLaborMarketResearchDone === null || newHiringStrategyDone === null ||
+      newOnboardingDuration === '' || !Number.isInteger(onboardingDuration) || onboardingDuration < 0 ||
+      newOnboardingUnit === ''
+    ) return;
+    const startupAnswers: StartupAnswers = {
+      staffingMode: newStaffingMode,
+      salaryMedianResearchDone: newSalaryMedianResearchDone,
+      laborMarketResearchDone: newLaborMarketResearchDone,
+      hiringStrategyDone: newHiringStrategyDone,
+      onboardingDuration,
+      onboardingUnit: newOnboardingUnit,
+    };
+    if (newUsername.trim().length < 3 || newPassword.length < 8) return;
+    createMutation.mutate({ data: {
+      ...makeProjectInput(title, readyMonths, newReadyMilestone, newReadyShopIds, newMcDates, newRfsuDates, startupAnswers),
+      access: { username: newUsername.trim(), password: newPassword },
+    } }, {
       onSuccess: created => {
         qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
         qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
+        setAccessGrantedId(created.id);
         setActiveId(created.id); setDraft(created); initializedId.current = created.id;
-        savedJson.current = JSON.stringify(created); setModal(null); setNewTitle('');
+        savedJson.current = JSON.stringify(created); setModal(null); setNewTitle(''); setNewUsername(''); setNewPassword('');
       },
       onError: () => notify('Не удалось создать проект. Повторите попытку.'),
     });
   };
-  const openProject = (id: string) => { if (timer.current) clearTimeout(timer.current); initializedId.current = ''; setDraft(null); setActiveId(id); };
-  const copyCurrent = () => {
+  const openProject = (id: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    initializedId.current = '';
+    setDraft(null);
+    setAccessGrantedId(null);
+    setAccessUsername('');
+    setAccessPassword('');
+    setAccessError('');
+    setAccessReady(false);
+    setActiveId(id);
+    qc.removeQueries({ queryKey: getGetProjectQueryKey(id) });
+    setModal('access');
+    void logoutProjectAccess().then(() => setAccessReady(true)).catch(() => {
+      setAccessError('Не удалось завершить предыдущий сеанс. Обновите страницу и попробуйте снова.');
+    });
+  };
+  const submitProjectAccess = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!projectId || !accessReady || accessSubmitting) return;
+    setAccessSubmitting(true);
+    setAccessError('');
+    try {
+      await authenticateProject(projectId, { username: accessUsername.trim(), password: accessPassword });
+      setAccessGrantedId(projectId);
+      setAccessPassword('');
+      setModal(null);
+      await qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
+    } catch (error) {
+      const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined;
+      setAccessError(status === 429
+        ? 'Слишком много попыток. Попробуйте позже.'
+        : status === 401
+          ? 'Неверный логин или пароль.'
+          : 'Не удалось проверить доступ. Попробуйте ещё раз.');
+    } finally {
+      setAccessSubmitting(false);
+    }
+  };
+  useEffect(() => {
+    if (!activeId && projects.length) openProject(projects[0].id);
+  }, [activeId, projects]);
+  const moveProject = (direction: -1 | 1) => {
+    if (!projects.length) return;
+    const currentIndex = projects.findIndex(item => item.id === activeSummary?.id);
+    const startIndex = currentIndex < 0 ? 0 : currentIndex;
+    openProject(projects[(startIndex + direction + projects.length) % projects.length].id);
+  };
+  const copyCurrent = (event: FormEvent) => {
+    event.preventDefault();
     if (!projectId) return;
-    copyMutation.mutate({ projectId }, {
-      onSuccess: copied => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(copied); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); notify('Создана копия проекта'); },
+    if (copyUsername.trim().length < 3 || copyPassword.length < 8) return;
+    copyMutation.mutate({ projectId, data: { username: copyUsername.trim(), password: copyPassword } }, {
+      onSuccess: copied => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setAccessGrantedId(copied.id); setActiveId(copied.id); setDraft(copied); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); setCopyUsername(''); setCopyPassword(''); setModal(null); notify('Создана копия проекта'); },
       onError: () => notify('Не удалось скопировать проект'),
     });
   };
   const removeProject = () => {
     if (!projectId || !window.confirm(`Удалить проект «${draft?.title ?? activeSummary?.title}»? Это действие нельзя отменить.`)) return;
     deleteMutation.mutate({ projectId }, {
-      onSuccess: () => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); initializedId.current = ''; setDraft(null); setActiveId(null); notify('Проект удалён'); },
+      onSuccess: () => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); initializedId.current = ''; setDraft(null); setAccessGrantedId(null); setActiveId(null); notify('Проект удалён'); },
       onError: () => notify('Не удалось удалить проект'),
     });
   };
@@ -378,24 +506,53 @@ function Planner() {
     () => project ? scheduleTrainingTimeline(project, staffReadyDate) : [],
     [project, staffReadyDate],
   );
-  const expandedRoleContractDates = useMemo(() => {
+  const onboardingDurationDays = project
+    ? durationInDays(
+      project.settings.onboardingDuration ?? 0,
+      project.settings.onboardingUnit ?? 'days',
+      project.settings.dayType,
+    )
+    : 0;
+  const firstTrainingStart = trainingTimeline.reduce<string | null>(
+    (first, item) => !first || item.startDate < first ? item.startDate : first,
+    null,
+  );
+  const hiringResearchMilestones = useMemo(
+    () => project ? getHiringResearchMilestones(project, firstTrainingStart) : [],
+    [project, firstTrainingStart],
+  );
+  const expandedRoleTimelineDates = useMemo(() => {
     if (!project) return [];
     return project.shops
       .filter(shop => expandedShopIds.includes(shop.id))
       .flatMap(shop => shop.roles
         .filter(role => role.visible)
-        .map(role => getRoleTrainingPlan(project, shop.id, role.id, getShopReadyDate(project, shop.id)).contractDate)
-        .filter((date): date is string => date !== null));
-  }, [project, expandedShopIds]);
+        .flatMap(role => {
+          const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, getShopReadyDate(project, shop.id));
+          const contractDate = rolePlan.contractDate;
+          const onboardingStartDate = getOnboardingStartDate(
+            rolePlan.startDate,
+            project.settings.onboardingDuration ?? 0,
+            project.settings.onboardingUnit ?? 'days',
+            project.settings.dayType,
+          );
+          return [contractDate, onboardingStartDate, getRecruitmentStartDate(
+            contractDate,
+            project.settings.recruitmentLeadValue,
+            project.settings.recruitmentLeadUnit,
+          )].filter((date): date is string => date !== null);
+        }));
+  }, [project, expandedShopIds, onboardingDurationDays]);
   useEffect(() => {
-    if (!project || (!trainingTimeline.length && !expandedRoleContractDates.length)) return;
+    if (!project || (!trainingTimeline.length && !expandedRoleTimelineDates.length && !hiringResearchMilestones.length)) return;
     const dates = [
       ...trainingTimeline.flatMap(item => [item.startDate, item.endDate]),
-      ...expandedRoleContractDates,
+      ...expandedRoleTimelineDates,
+      ...hiringResearchMilestones.map(item => item.date),
     ].sort();
     setTimelineStart(current => !current || dates[0] < current ? dates[0] : current);
     setTimelineEnd(current => !current || dates[dates.length - 1] > current ? dates[dates.length - 1] : current);
-  }, [project?.id, trainingTimeline, expandedRoleContractDates]);
+  }, [project?.id, trainingTimeline, expandedRoleTimelineDates, hiringResearchMilestones]);
   const plannedTrainingDays = project
     ? totalTrainingDays(project.training, project.settings.calculationMode, project.settings.dayType)
     : 0;
@@ -575,9 +732,14 @@ function Planner() {
                 <span className="truncate text-[8px] font-bold uppercase tracking-[.1em] text-[#85877e]">Портфель проектов</span>
                 <span className="mono shrink-0 text-[9px] text-[#898a82]">{projects.length}</span>
               </div>
-              {projects.length ? <select data-testid="select-project-portfolio" aria-label="Выбрать проект из портфеля" value={activeSummary?.id ?? ''} onChange={event => openProject(event.target.value)} className="control h-7 w-full min-w-0 truncate px-2 text-[10px]">
-                {projects.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
-              </select> : <button type="button" onClick={openNewProject} className="truncate text-left text-[10px] font-semibold text-[#bd4c2b] hover:underline">Добавить первый проект</button>}
+              {projects.length ? <div className="grid grid-cols-[24px_minmax(0,1fr)_24px] items-center gap-1">
+                <button type="button" data-testid="button-portfolio-previous" aria-label="Предыдущий проект" title="Предыдущий проект" disabled={projects.length < 2} onClick={() => moveProject(-1)} className="control flex h-7 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"><ArrowLeft size={12} /></button>
+                <button type="button" data-testid="button-portfolio-current" aria-label={`Открыть проект ${activeSummary?.title ?? ''}`} onClick={() => activeSummary && openProject(activeSummary.id)} className="control flex h-7 min-w-0 items-center justify-between gap-1 px-2 text-[10px]">
+                  <span className="truncate">{activeSummary?.title ?? 'Выберите проект'}</span>
+                  <span className="mono shrink-0 text-[8px] text-[#85877e]">{activeProjectIndex + 1}/{projects.length}</span>
+                </button>
+                <button type="button" data-testid="button-portfolio-next" aria-label="Следующий проект" title="Следующий проект" disabled={projects.length < 2} onClick={() => moveProject(1)} className="control flex h-7 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"><ArrowRight size={12} /></button>
+              </div> : <button type="button" onClick={openNewProject} className="truncate text-left text-[10px] font-semibold text-[#bd4c2b] hover:underline">Добавить первый проект</button>}
             </div>
             <button type="button" aria-label="Добавить проект" title="Добавить проект" onClick={openNewProject} className="btn-quiet flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#bd4c2b]"><Plus size={15} /></button>
           </section>
@@ -586,7 +748,7 @@ function Planner() {
         <div className="min-w-0">
 
           <section className="min-w-0">
-            {!projects.length ? <div className="panel flex min-h-[450px] flex-col items-center justify-center rounded-xl px-6 text-center"><div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#f0e7db] text-[#bd4c2b]"><Factory size={25} /></div><h2 className="display-font text-2xl">Начните с проекта</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Создайте план строительства — затем синхронизируйте этапы четырёх цехов, контрольные даты и подготовку команд.</p><button className="btn-primary mt-5 rounded-md px-4 py-2.5 text-sm font-bold" onClick={() => setModal('new')}>Создать проект</button></div> :
+            {!projects.length ? <div className="panel flex min-h-[450px] flex-col items-center justify-center rounded-xl px-6 text-center"><div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#f0e7db] text-[#bd4c2b]"><Factory size={25} /></div><h2 className="display-font text-2xl">Начните с проекта</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Создайте план строительства — затем синхронизируйте этапы четырёх цехов, контрольные даты и подготовку команд.</p><button className="btn-primary mt-5 rounded-md px-4 py-2.5 text-sm font-bold" onClick={openNewProject}>Создать проект</button></div> :
             projectQuery.isLoading || !project ? <div className="panel min-h-[390px] animate-pulse rounded-xl p-6"><div className="h-7 w-64 rounded bg-[#e9e5db]" /><div className="mt-7 h-40 rounded-lg bg-[#f0ede5]" /><div className="mt-5 h-24 rounded-lg bg-[#f0ede5]" /></div> :
             <>
               {warningMessages.length > 0 && <div role="alert" className="mb-4 rounded-lg border border-[#e7c9ac] bg-[#fbf2e6] px-4 py-3 text-[11px] text-[#805c32]">
@@ -608,7 +770,7 @@ function Planner() {
                     <button data-testid="button-add-training" onClick={() => { setEditingTraining(null); setModal('training'); }} className="control inline-flex h-8 items-center gap-1.5 px-2.5 text-[11px] font-bold text-[#4b5959]"><Users size={13} />Обучение</button>
                     <button onClick={() => { void downloadRecruitmentWorkbook(project).catch(error => { console.error('Failed to build recruitment workbook', error); window.alert('Не удалось сформировать Excel-файл. Повторите попытку.'); }); }} className="btn-primary inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[10px] font-bold sm:text-[11px]"><FileSpreadsheet size={14} />Сформировать план набора персонала</button>
                     <button aria-label="Настройки расчёта" onClick={() => setModal('settings')} className="control flex h-8 w-8 items-center justify-center text-[#65716d]"><Settings2 size={14} /></button>
-                    <IconButton label="Копировать проект" onClick={copyCurrent}><Copy size={14} /></IconButton>
+                    <IconButton label="Копировать проект" onClick={() => { setCopyUsername(''); setCopyPassword(''); setModal('copy'); }}><Copy size={14} /></IconButton>
                     <IconButton label="Удалить проект" onClick={removeProject} danger><Trash2 size={14} /></IconButton>
                   </div>
                 </div>
@@ -649,11 +811,17 @@ function Planner() {
                   onPointerUp={() => { dragRef.current = null; }}
                   onPointerCancel={() => { dragRef.current = null; }}
                 >
-                  <div className="min-w-[760px]">
+                  <div className="relative min-w-[760px]">
                     <div className="flex border-b border-[#e7e2d8] bg-[#f7f5ee]">
                       <div className="sticky left-0 z-20 w-[184px] shrink-0 bg-[#f7f5ee] px-4 py-2 text-[9px] font-bold uppercase tracking-[.14em] text-[#83867f]">Площадка / этап / обучение</div>
                       <div className="timeline-grid relative h-8 flex-1 overflow-hidden">{months.map((m, i) => <span key={`${m.label}-${i}`} className="absolute top-2 -translate-x-1/2 whitespace-nowrap text-[9px] font-semibold uppercase text-[#888a80]" style={{ left: `${m.left}%` }}>{m.label}</span>)}</div>
                     </div>
+                    {hiringResearchMilestones.length > 0 && <div className="flex min-h-[42px] border-b border-[#ece8df]">
+                      <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 items-center bg-[#fbfaf5] px-4 text-[9px] font-bold text-[#596461]">Подготовка к найму</div>
+                      <div className="timeline-grid relative h-[42px] min-w-0 flex-1">
+                        <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
+                      </div>
+                    </div>}
                     {project.shops.map((shop, shopIndex) => {
                       const phases = getShopTimelinePhases(project.phases, project.milestones, shop.id);
                       const rowMinHeight = Math.max(75, 10 + Math.max(0, phases.length - 1) * 22 + 30);
@@ -702,20 +870,55 @@ function Planner() {
                         {phases.length === 0 && <div className="border-t border-dashed border-[#ece8df] py-1 pl-[200px] text-[9px] text-[#a3a195]">Для площадки нет назначенных этапов</div>}
                         {rolesExpanded && (plannedRoles.length ? plannedRoles.map(role => {
                           const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, shopReadyDate);
+                          const recruitmentStartDate = getRecruitmentStartDate(
+                            rolePlan.contractDate,
+                            project.settings.recruitmentLeadValue,
+                            project.settings.recruitmentLeadUnit,
+                          );
+                          const onboardingStartDate = getOnboardingStartDate(
+                            rolePlan.startDate,
+                            project.settings.onboardingDuration ?? 0,
+                            project.settings.onboardingUnit ?? 'days',
+                            project.settings.dayType,
+                          );
                           const left = rolePlan.startDate ? position(rolePlan.startDate) : 0;
                           const barWidth = rolePlan.startDate && rolePlan.endDate ? width(rolePlan.startDate, rolePlan.endDate) : 0;
-                          return <div key={role.id} className="flex min-h-[42px] border-t border-[#ece8df] bg-[#fdfcf8]">
+                          const onboardingLeft = onboardingStartDate ? position(onboardingStartDate) : 0;
+                          const onboardingWidth = onboardingStartDate && rolePlan.startDate ? width(onboardingStartDate, rolePlan.startDate) : 0;
+                          return <div key={role.id} className="flex min-h-[52px] border-t border-[#ece8df] bg-[#fdfcf8]">
                             <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fdfcf8] pl-10 pr-3">
                               <span className="truncate text-[9px] font-semibold text-[#4f5b58]" title={`${role.name} · ${shop.name}`}>{role.name}</span>
                               <span className="text-[8px] text-[#85877e]">{rolePlan.totalDays} дн. обучения</span>
                             </div>
-                            <div className="timeline-grid relative h-[42px] min-w-0 flex-1">
+                            <div className="timeline-grid relative h-[52px] min-w-0 flex-1">
                               <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
+                              {rolePlan.hasTrainingBar && onboardingStartDate && rolePlan.startDate && <Tooltip.Root delayDuration={220}>
+                                <Tooltip.Trigger asChild>
+                                  <button
+                                    type="button"
+                                    aria-label={`Онбординг роли ${role.name}: ${onboardingDurationDays} дней`}
+                                    title={`Онбординг: ${fmt(onboardingStartDate)} — ${fmt(rolePlan.startDate)}`}
+                                    className="absolute top-[19px] z-[3] flex h-[16px] min-w-0 items-center overflow-hidden rounded-l-[4px] bg-[#bd9560] px-1 text-left text-[8px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]"
+                                    style={{ left: `${onboardingLeft}%`, width: `${onboardingWidth}%` }}
+                                  >
+                                    <span className="truncate">Онбординг · {onboardingDurationDays} дн.</span>
+                                  </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                  <Tooltip.Content side="top" align="start" sideOffset={6} collisionPadding={12} className="z-[100] max-w-[88vw] rounded-lg border border-[#d9d4ca] bg-[#fbfaf5] p-3 text-[#293640] shadow-xl">
+                                    <h4 className="text-[11px] font-extrabold">Онбординг: {role.name}</h4>
+                                    <p className="mt-1 text-[9px] text-[#777b76]">Получение СИЗов, ознакомление с рабочим местом и коллективом.</p>
+                                    <p className="mt-1 text-[9px] font-semibold">{project.settings.onboardingDuration ?? 0} {project.settings.onboardingUnit === 'weeks' ? 'нед.' : 'дн.'} · {onboardingDurationDays} дн. · {fmt(onboardingStartDate)} — {fmt(rolePlan.startDate)}</p>
+                                    <Tooltip.Arrow className="fill-[#fbfaf5]" />
+                                  </Tooltip.Content>
+                                </Tooltip.Portal>
+                              </Tooltip.Root>}
+                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Начало рекрутинга" color="#b77a3e" roleSpecific labelPlacement="top-[16px]" />}
                               {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" roleSpecific />}
                               {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {rolePlan.hasTrainingBar && rolePlan.startDate && rolePlan.endDate && <Tooltip.Root delayDuration={220}>
                                 <Tooltip.Trigger asChild>
-                                  <button type="button" aria-label={`Обучение роли ${role.name}: ${rolePlan.totalDays} дней`} className="absolute top-[19px] z-[3] flex h-[16px] min-w-0 items-center overflow-hidden rounded-[4px] bg-[#557d6e] px-2 text-left text-[9px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]" style={{ left: `${left}%`, width: `${barWidth}%` }}>
+                                  <button type="button" aria-label={`Обучение роли ${role.name}: ${rolePlan.totalDays} дней`} className={`absolute top-[19px] z-[3] flex h-[16px] min-w-0 items-center overflow-hidden ${onboardingStartDate ? 'rounded-r-[4px]' : 'rounded-[4px]'} bg-[#557d6e] px-2 text-left text-[9px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]`} style={{ left: `${left}%`, width: `${barWidth}%` }}>
                                     <span className="truncate">{rolePlan.totalDays} дн. обучения</span>
                                   </button>
                                 </Tooltip.Trigger>
@@ -790,11 +993,22 @@ function Planner() {
                       })}
                       {trainingTimeline.length === 0 && <div className="flex min-h-[38px] items-center pl-[200px] text-[9px] text-[#99978c]">Добавьте обучение с длительностью больше нуля, чтобы увидеть его на шкале.</div>}
                     </div>
+                    {hiringResearchMilestones.length > 0 && <div className="pointer-events-none absolute bottom-0 left-[184px] right-0 top-8 z-[6]">
+                      {hiringResearchMilestones.map((item, index) => <MilestoneLine
+                        key={item.id}
+                        date={item.date}
+                        start={timelineStart || project.startDate}
+                        totalDays={totalDays}
+                        label={item.label}
+                        color={item.color}
+                        labelPlacement={index === 0 ? 'top-0.5' : index === 1 ? 'top-[16px]' : 'top-[28px]'}
+                      />)}
+                    </div>}
                   </div>
                 </div>}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e5e1d7] px-4 py-3 md:px-5">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] text-[#737a77]">
-                    <Legend swatch={phaseColors.construction} label="Стройка" /><Legend swatch={phaseColors.precommissioning} label="ПредПНР" /><Legend swatch={phaseColors.commissioning} label="ПНР" /><Legend swatch={phaseColors.operation} label="Эксплуатация" /><Legend diamond="#bd4c2b" label="MC / RFSU" /><Legend dot="#315f59" label="Готовность персонала" />
+                    <Legend swatch={phaseColors.construction} label="Стройка" /><Legend swatch={phaseColors.precommissioning} label="ПредПНР" /><Legend swatch={phaseColors.commissioning} label="ПНР" /><Legend swatch={phaseColors.operation} label="Эксплуатация" /><Legend swatch="#bd9560" label="Онбординг" /><Legend diamond="#bd4c2b" label="MC / RFSU" /><Legend dot="#315f59" label="Готовность персонала" />
                     {trainingCategories.map(category => <Legend key={category} swatch={trainingColors[category]} label={categoryNames[category]} />)}
                   </div>
                   <button onClick={() => setModal('settings')} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#6c7570] hover:text-[#bd4c2b]"><SlidersHorizontal size={12} />Настроить расчёт</button>
@@ -805,7 +1019,7 @@ function Planner() {
                 <section className="panel rounded-xl">
                   <div className="flex items-center justify-between border-b border-[#e5e1d7] px-4 py-3"><div><h3 className="text-xs font-extrabold">Подготовка персонала</h3><p className="mt-0.5 text-[10px] text-[#85877e]">Суммарно: {plannedTrainingDays} {project.settings.dayType === 'working' ? 'рабочих' : 'календарных'} дней · {project.settings.calculationMode === 'sequential' ? 'последовательный режим' : 'параллельный режим'}</p></div><button onClick={() => { setEditingTraining(null); setModal('training'); }} className="btn-quiet flex h-7 items-center gap-1 rounded px-2 text-[10px] font-bold text-[#bd4c2b]"><Plus size={12} />Добавить обучение</button></div>
                   {project.training.length === 0 && <div className="px-4 py-5 text-[11px] text-[#878980]">Добавьте мероприятия: их длительность будет учтена при расчёте даты контракта.</div>}
-                  <div className="divide-y divide-[#eee9df]">
+                   <div aria-label="Список обучений" tabIndex={0} className="max-h-[55vh] overflow-y-auto overscroll-contain divide-y divide-[#eee9df] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]">
                     {trainingCategories.map(category => {
                       const events = project.training.filter(event => event.category === category).sort((a, b) => a.sortOrder - b.sortOrder);
                       const categoryDays = events.reduce((sum, event) => sum + trainingDays(event, project.settings.dayType), 0);
@@ -838,6 +1052,19 @@ function Planner() {
                     project={project}
                     onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
                   />
+                    <HiringResearchSettings
+                      project={project}
+                      hasScheduledTraining={trainingTimeline.length > 0}
+                      onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
+                    />
+                    <RecruitmentLeadSettings
+                      project={project}
+                      onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
+                    />
+                    <OnboardingSettings
+                      project={project}
+                      onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
+                    />
                 </section>
               </div>
             </>}
@@ -846,8 +1073,64 @@ function Planner() {
       </div>
     </main>
 
+    {modal === 'startup' && <Modal title="Исходные условия проекта" subtitle="Ответьте на вопросы перед настройкой плана." onClose={() => setModal(null)}>
+      <form onSubmit={event => { event.preventDefault(); if (startupAnswersComplete) setModal('new'); }} className="space-y-4 p-6">
+        <Field label="Принято ли решение о форме работы персонала?">
+          <select data-testid="select-startup-staffing-mode" value={newStaffingMode} onChange={event => setNewStaffingMode(event.target.value as WorkforceMode | '')} className="control h-10 w-full px-2 text-xs" required>
+            <option value="">Выберите вариант</option>
+            <option value="shift">Вахта</option>
+            <option value="local">Местный персонал</option>
+          </select>
+        </Field>
+        <YesNoField dataTestId="select-startup-salary-research" label="Проведено ли исследование медианной зарплаты в регионе?" value={newSalaryMedianResearchDone} onChange={setNewSalaryMedianResearchDone} />
+        <YesNoField dataTestId="select-startup-labor-market-research" label="Проведено ли исследование рынка трудовых резервов?" value={newLaborMarketResearchDone} onChange={setNewLaborMarketResearchDone} />
+        <YesNoField dataTestId="select-startup-hiring-strategy" label="Разработана ли стратегия найма?" value={newHiringStrategyDone} onChange={setNewHiringStrategyDone} />
+        <Field label="Время на онбординг — получение СИЗов, ознакомление с рабочим местом, коллективом и т. д.">
+          <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-2">
+            <input
+              data-testid="input-startup-onboarding-duration"
+              aria-label="Длительность онбординга"
+              type="number"
+              min="0"
+              step="1"
+              value={newOnboardingDuration}
+              onChange={event => setNewOnboardingDuration(event.target.value)}
+              placeholder="Укажите число"
+              className="control h-10 w-full px-2 text-xs"
+              required
+            />
+            <select
+              data-testid="select-startup-onboarding-unit"
+              aria-label="Единица длительности онбординга"
+              value={newOnboardingUnit}
+              onChange={event => setNewOnboardingUnit(event.target.value as OnboardingUnit | '')}
+              className="control h-10 w-full px-2 text-xs"
+              required
+            >
+              <option value="">Дни или недели</option>
+              <option value="days">Дней</option>
+              <option value="weeks">Недель</option>
+            </select>
+          </div>
+        </Field>
+        <p className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f777e]">Если исследование или стратегия ещё не готовы, соответствующая отсечка появится перед первым обучением.</p>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button>
+          <button disabled={!startupAnswersComplete} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">Далее</button>
+        </div>
+      </form>
+    </Modal>}
     {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)} extraWide><form onSubmit={createProject} className="space-y-4 p-6">
       <Field label="Название проекта"><input autoFocus data-testid="input-new-project-title" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Например, Модернизация установки № 2" className="control h-11 w-full px-3 text-sm" required /></Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Логин для входа в проект">
+          <input data-testid="input-new-project-username" autoComplete="username" value={newUsername} onChange={event => setNewUsername(event.target.value)} minLength={3} maxLength={64} placeholder="Не менее 3 символов" className="control h-10 w-full px-3 text-xs" required />
+        </Field>
+        <Field label="Пароль для входа в проект">
+          <input data-testid="input-new-project-password" type="password" autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} minLength={8} maxLength={128} placeholder="Не менее 8 символов" className="control h-10 w-full px-3 text-xs" required />
+        </Field>
+      </div>
+      <p className="-mt-2 text-[10px] text-[#85877e]">Пароль хранится в виде защищённого хеша. Запишите пару логин/пароль — восстановить пароль через приложение нельзя.</p>
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         <section className="min-w-0 rounded-md border border-[#e2ddd2] p-3">
           <div className="flex items-center gap-2"><span className="mono rounded bg-[#e7eee8] px-1.5 py-0.5 text-[9px] font-bold text-[#4e7066]">100%</span><h3 className="text-[10px] font-extrabold">Готовность персонала</h3></div>
@@ -870,8 +1153,39 @@ function Planner() {
         <ShopMilestoneDateFields code="RFSU" title="Готовность к пуску" allDate={newRfsuAllDate} dates={newRfsuDates} onAllDateChange={date => setAllNewMilestoneDates('rfsu', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('rfsu', shopId, date)} />
       </div>
       <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Для MC и RFSU задайте общую дату или отдельные даты по цехам. Будут созданы четыре площадки, базовые роли и стартовые этапы.</div>
-      <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !newReadyMonths || !newReadyMilestone || !newReadyShopIds.length} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
+      <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal('startup')} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Назад</button><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !startupAnswersComplete || !newReadyMonths || !newReadyMilestone || !newReadyShopIds.length || newUsername.trim().length < 3 || newPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
     </form></Modal>}
+    {modal === 'access' && activeSummary && <Modal title={`Вход в проект «${activeSummary.title}»`} subtitle="Введите данные доступа, чтобы открыть план." onClose={() => setModal(null)}>
+      <form onSubmit={event => void submitProjectAccess(event)} className="space-y-4 p-6">
+        <Field label="Логин">
+          <input data-testid="input-project-access-username" autoComplete="username" value={accessUsername} onChange={event => setAccessUsername(event.target.value)} minLength={3} maxLength={64} className="control h-10 w-full px-3 text-xs" required />
+        </Field>
+        <Field label="Пароль">
+          <input data-testid="input-project-access-password" type="password" autoComplete="current-password" value={accessPassword} onChange={event => setAccessPassword(event.target.value)} minLength={8} maxLength={128} className="control h-10 w-full px-3 text-xs" required />
+        </Field>
+        <p className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f777e]">Если для этого проекта ещё не настроен доступ, первая введённая пара станет логином и паролем. Для защищённого проекта введите существующую пару.</p>
+        {accessError && <p role="alert" className="text-xs font-semibold text-[#a84732]">{accessError}</p>}
+        {!accessReady && !accessError && <p className="text-xs text-[#777b78]">Завершение предыдущего сеанса…</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button>
+          <button disabled={!accessReady || accessSubmitting || accessUsername.trim().length < 3 || accessPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{accessSubmitting ? 'Проверка…' : 'Войти'}</button>
+        </div>
+      </form>
+    </Modal>}
+    {modal === 'copy' && project && <Modal title="Копировать проект" subtitle="Для копии задайте отдельную пару логин/пароль." onClose={() => setModal(null)}>
+      <form onSubmit={copyCurrent} className="space-y-4 p-6">
+        <Field label="Логин для копии">
+          <input data-testid="input-copy-project-username" autoComplete="username" value={copyUsername} onChange={event => setCopyUsername(event.target.value)} minLength={3} maxLength={64} className="control h-10 w-full px-3 text-xs" required />
+        </Field>
+        <Field label="Пароль для копии">
+          <input data-testid="input-copy-project-password" type="password" autoComplete="new-password" value={copyPassword} onChange={event => setCopyPassword(event.target.value)} minLength={8} maxLength={128} className="control h-10 w-full px-3 text-xs" required />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button>
+          <button disabled={copyMutation.isPending || copyUsername.trim().length < 3 || copyPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{copyMutation.isPending ? 'Копирование…' : 'Создать копию'}</button>
+        </div>
+      </form>
+    </Modal>}
     {modal === 'phase' && project && <PhaseModal phase={editingPhase} project={project} onClose={() => setModal(null)} onSave={phase => { const phases = editingPhase ? project.phases.map(p => p.id === phase.id ? phase : p) : [...project.phases, phase]; expandTimeline([phase.startDate, phase.endDate]); patch({ phases }); setModal(null); }} onDelete={() => { if (editingPhase && window.confirm('Удалить этот этап из плана?')) { patch({ phases: project.phases.filter(p => p.id !== editingPhase.id) }); setModal(null); } }} />}
     {modal === 'training' && project && <TrainingModal event={editingTraining} project={project} onClose={() => setModal(null)} onSave={event => { const training = editingTraining ? project.training.map(t => t.id === event.id ? event : t) : [...project.training, { ...event, sortOrder: project.training.length }]; patch({ training }); setModal(null); }} onDelete={() => { if (editingTraining && window.confirm('Удалить событие обучения?')) { patch({ training: project.training.filter(t => t.id !== editingTraining.id) }); setModal(null); } }} />}
     {modal === 'roles' && project && <RolesModal
@@ -911,7 +1225,7 @@ function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
   const x = (rawDateDiff(start, now) / totalDays) * 100;
   return x >= 0 && x <= 100 ? <div className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55" style={{ left: `${x}%` }}><span className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" /></div> : null;
 }
-function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean }) {
+function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]' }) {
   const pointerDown = useRef(false);
   const x = (rawDateDiff(start, date) / totalDays) * 100;
   if (x < 0 || x > 100) return null;
@@ -922,9 +1236,9 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
       : label === 'Готов'
         ? 'Профессия обучена и готова'
         : label;
-  const labelPosition = roleSpecific
+  const labelPosition = labelPlacement ?? (roleSpecific
     ? label === 'Готов' ? 'bottom-0.5' : 'top-0.5'
-    : label === 'Готов 100%' ? 'top-[20px]' : 'top-0.5';
+    : label === 'Готов 100%' ? 'top-[20px]' : 'top-0.5');
   const markerPosition = roleSpecific && label === 'Готов' ? 'bottom-[7px]' : 'top-[7px]';
   return <div className={`pointer-events-none absolute bottom-0 top-0 ${roleSpecific ? 'z-[4]' : 'z-[2]'}`} style={{ left: `${x}%` }} title={`${fullLabel} · ${fmt(date)}`}>
     <span className="absolute bottom-0 top-0 border-l border-dashed" style={{ borderColor: color }} />
@@ -1053,6 +1367,167 @@ function ReadyMilestoneCard({ project, onChange }: { project: Project; onChange:
 }
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-1.5 block text-[11px] font-bold text-[#56615f]">{label}</span>{children}</label>;
+}
+function YesNoField({ label, value, onChange, dataTestId }: { label: string; value: boolean | null; onChange: (value: boolean | null) => void; dataTestId: string }) {
+  return <Field label={label}>
+    <select
+      data-testid={dataTestId}
+      value={value === null ? '' : value ? 'yes' : 'no'}
+      onChange={event => onChange(event.target.value === '' ? null : event.target.value === 'yes')}
+      className="control h-10 w-full px-2 text-xs"
+      required
+    >
+      <option value="">Выберите ответ</option>
+      <option value="yes">Да</option>
+      <option value="no">Нет</option>
+    </select>
+  </Field>;
+}
+function HiringResearchSettings({ project, hasScheduledTraining, onChange }: { project: Project; hasScheduledTraining: boolean; onChange: (settings: Partial<Project['settings']>) => void }) {
+  return <div className="border-t border-[#eee9df] px-4 py-3">
+    <div className="mb-2">
+      <h4 className="text-[10px] font-extrabold text-[#293640]">Кадровые условия и подготовка к найму</h4>
+      <p className="mt-0.5 text-[9px] text-[#85877e]">Для ответа «Нет» отсечка появится до первого обучения.</p>
+    </div>
+    <Field label="Форма работы персонала">
+      <select
+        data-testid="select-staffing-mode"
+        value={project.settings.staffingMode ?? ''}
+        onChange={event => {
+          const value = event.target.value;
+          onChange({ staffingMode: value === 'shift' || value === 'local' ? value : undefined });
+        }}
+        className="control h-8 w-full px-2 text-[10px]"
+      >
+        <option value="">Не указано</option>
+        <option value="shift">Вахта</option>
+        <option value="local">Местный персонал</option>
+      </select>
+    </Field>
+    <div className="mt-3 grid grid-cols-[minmax(0,1fr)_74px_94px] gap-x-2 gap-y-1.5">
+      <span className="text-[8px] font-bold text-[#85877e]">Подготовительный пункт</span>
+      <span className="text-[8px] font-bold text-[#85877e]">Готово?</span>
+      <span className="text-[8px] font-bold text-[#85877e]">Мес. до обучения</span>
+      {hiringResearchConfig.map(item => {
+        const answer = project.settings[item.statusKey];
+        const months = project.settings[item.monthsKey] ?? item.defaultMonths;
+        return <Fragment key={item.id}>
+          <span title={item.label} className="self-center truncate text-[9px] font-semibold text-[#4f5b58]">{item.label}</span>
+          <select
+            data-testid={`select-${item.id}-done`}
+            aria-label={`${item.label}: выполнено`}
+            value={answer === undefined ? '' : answer ? 'yes' : 'no'}
+            onChange={event => {
+              const value = event.target.value;
+              onChange({ [item.statusKey]: value === '' ? undefined : value === 'yes' } as Partial<Project['settings']>);
+            }}
+            className="control h-7 min-w-0 px-1 text-[9px]"
+          >
+            <option value="">—</option>
+            <option value="yes">Да</option>
+            <option value="no">Нет</option>
+          </select>
+          <LeadMonthsInput
+            label={`Месяцев до обучения: ${item.label}`}
+            value={months}
+            onCommit={value => onChange({ [item.monthsKey]: value } as Partial<Project['settings']>)}
+          />
+        </Fragment>;
+      })}
+    </div>
+    {!hasScheduledTraining && <p className="mt-2 text-[9px] text-[#85877e]">Отсечки появятся после добавления обучения с длительностью больше нуля.</p>}
+  </div>;
+}
+function RecruitmentLeadSettings({ project, onChange }: { project: Project; onChange: (settings: Partial<Project['settings']>) => void }) {
+  const value = project.settings.recruitmentLeadValue ?? recruitmentLeadDefaults.value;
+  const unit = project.settings.recruitmentLeadUnit ?? recruitmentLeadDefaults.unit;
+  return <div className="border-t border-[#eee9df] px-4 py-3">
+    <div>
+      <h4 className="text-[10px] font-extrabold text-[#293640]">Начало рекрутинга</h4>
+      <p className="mt-0.5 text-[9px] text-[#85877e]">Отдельная отсечка для каждой профессии — до её даты «На контракт».</p>
+    </div>
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[#626e6a]">
+      <span>Начинать за</span>
+      <div className="w-20 shrink-0">
+        <LeadMonthsInput
+          label="Срок до начала рекрутинга"
+          value={value}
+          onCommit={nextValue => onChange({ recruitmentLeadValue: nextValue })}
+        />
+      </div>
+      <select
+        data-testid="select-recruitment-lead-unit"
+        aria-label="Единица срока до начала рекрутинга"
+        value={unit}
+        onChange={event => {
+          const nextUnit = event.target.value;
+          if (nextUnit === 'days' || nextUnit === 'months') onChange({ recruitmentLeadUnit: nextUnit });
+        }}
+        className="control h-8 px-2 text-[10px]"
+      >
+        <option value="days">дней</option>
+        <option value="months">месяцев</option>
+      </select>
+      <span>до отсечки «На контракт»</span>
+    </div>
+    <p className="mt-1 text-[8px] text-[#92938a]">Дни и месяцы календарные.</p>
+  </div>;
+}
+function OnboardingSettings({ project, onChange }: { project: Project; onChange: (settings: Partial<Project['settings']>) => void }) {
+  const duration = project.settings.onboardingDuration ?? 0;
+  const unit = project.settings.onboardingUnit ?? 'days';
+  return <div className="border-t border-[#eee9df] px-4 py-3">
+    <div>
+      <h4 className="text-[10px] font-extrabold text-[#293640]">Онбординг перед первым обучением</h4>
+      <p className="mt-0.5 text-[9px] text-[#85877e]">Период добавляется один раз перед обучением каждой профессии.</p>
+    </div>
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[#626e6a]">
+      <span>Длительность</span>
+      <div className="w-20 shrink-0">
+        <LeadMonthsInput
+          label="Длительность онбординга"
+          value={duration}
+          onCommit={nextDuration => onChange({ onboardingDuration: nextDuration })}
+        />
+      </div>
+      <select
+        data-testid="select-onboarding-unit"
+        aria-label="Единица длительности онбординга"
+        value={unit}
+        onChange={event => {
+          const nextUnit = event.target.value;
+          if (nextUnit === 'days' || nextUnit === 'weeks') onChange({ onboardingUnit: nextUnit });
+        }}
+        className="control h-8 px-2 text-[10px]"
+      >
+        <option value="days">дней</option>
+        <option value="weeks">недель</option>
+      </select>
+    </div>
+  </div>;
+}
+function LeadMonthsInput({ label, value, onCommit }: { label: string; value: number; onCommit: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    const months = Number(draft);
+    if (!draft.trim() || !Number.isInteger(months) || months < 0) {
+      setDraft(String(value));
+      return;
+    }
+    if (months !== value) onCommit(months);
+  };
+  return <input
+    type="number"
+    min="0"
+    step="1"
+    aria-label={label}
+    value={draft}
+    onChange={event => setDraft(event.target.value)}
+    onBlur={commit}
+    onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+    className="control h-7 w-full min-w-0 px-1 text-center text-[9px]"
+  />;
 }
 function ShopMilestoneDateFields({ code, title, allDate, dates, onAllDateChange, onShopDateChange }: { code: 'MC' | 'RFSU'; title: string; allDate: string; dates: Record<string, string | null>; onAllDateChange: (date: string) => void; onShopDateChange: (shopId: string, date: string) => void }) {
   return <section className="rounded-md border border-[#e2ddd2] p-3">

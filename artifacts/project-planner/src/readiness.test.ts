@@ -3,6 +3,8 @@ import test from 'node:test';
 import type { Project } from '@workspace/api-client-react';
 import {
   commonMilestoneDate,
+  getRecruitmentStartDate,
+  getHiringResearchMilestones,
   getProjectReadyDate,
   getShopReadyDate,
   shiftCalendarMonths,
@@ -48,6 +50,63 @@ function project(overrides: Partial<Project> = {}): Project {
 
 test('calendar-month readiness clamps to the final day of a shorter month', () => {
   assert.equal(shiftCalendarMonths('2027-03-31', -1), '2027-02-28');
+});
+
+test('recruitment start defaults to 60 calendar days before each role contract date', () => {
+  assert.equal(getRecruitmentStartDate('2027-03-31'), '2027-01-30');
+  assert.equal(getRecruitmentStartDate('2027-04-10'), '2027-02-09');
+  assert.equal(getRecruitmentStartDate(null), null);
+});
+
+test('recruitment start supports a configurable calendar-month offset', () => {
+  assert.equal(getRecruitmentStartDate('2027-03-31', 2, 'months'), '2027-01-31');
+});
+
+test('unfinished hiring research is dated before the first training using configurable month offsets', () => {
+  const plan = project({
+    settings: {
+      ...project().settings,
+      salaryMedianResearchDone: false,
+      salaryMedianResearchMonthsBeforeTraining: 6,
+      laborMarketResearchDone: true,
+      hiringStrategyDone: false,
+    },
+  });
+
+  const milestones = getHiringResearchMilestones(plan, '2027-01-31');
+
+  assert.deepEqual(
+    milestones.map(({ label, date, months }) => ({ label, date, months })),
+    [
+      { label: 'Исследование медианы ЗП', date: '2026-07-31', months: 6 },
+      { label: 'Стратегия найма', date: '2026-01-31', months: 12 },
+    ],
+  );
+});
+
+test('hiring research uses 18, 16, and 12 months by default when unfinished', () => {
+  const plan = project({
+    settings: {
+      ...project().settings,
+      salaryMedianResearchDone: false,
+      laborMarketResearchDone: false,
+      hiringStrategyDone: false,
+    },
+  });
+
+  assert.deepEqual(
+    getHiringResearchMilestones(plan, '2027-01-31').map(({ label, date, months }) => ({ label, date, months })),
+    [
+      { label: 'Исследование медианы ЗП', date: '2025-07-31', months: 18 },
+      { label: 'Исследование рынка трудовых резервов', date: '2025-09-30', months: 16 },
+      { label: 'Стратегия найма', date: '2026-01-31', months: 12 },
+    ],
+  );
+});
+
+test('hiring research milestones are omitted until a first training date is available', () => {
+  const plan = project({ settings: { ...project().settings, salaryMedianResearchDone: false } });
+  assert.deepEqual(getHiringResearchMilestones(plan, null), []);
 });
 
 test('readiness and project summary use separate milestone dates for each selected shop', () => {

@@ -36,15 +36,31 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem)
  * @summary Create a project
  */
 
-export const createProjectBodyShopsItemRolesItemHeadcountMin = 0;
+export const createProjectBodyOneShopsItemRolesItemHeadcountMin = 0;
 
-export const createProjectBodyTrainingItemDurationMin = 0;
+export const createProjectBodyOneTrainingItemDurationMin = 0;
 
-export const createProjectBodyTrainingItemCostUsdMin = 0;
+export const createProjectBodyOneTrainingItemCostUsdMin = 0;
 
-export const createProjectBodySettingsDaysBeforeMcMin = 0;
+export const createProjectBodyOneSettingsDaysBeforeMcMin = 0;
 
-export const createProjectBodySettingsReadyMonthsBeforeMin = 0;
+export const createProjectBodyOneSettingsReadyMonthsBeforeMin = 0;
+
+export const createProjectBodyOneSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
+
+export const createProjectBodyOneSettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
+
+export const createProjectBodyOneSettingsHiringStrategyMonthsBeforeTrainingMin = 0;
+
+export const createProjectBodyOneSettingsRecruitmentLeadValueMin = 0;
+
+export const createProjectBodyOneSettingsOnboardingDurationMin = 0;
+
+export const createProjectBodyTwoAccessUsernameMin = 3;
+export const createProjectBodyTwoAccessUsernameMax = 64;
+
+export const createProjectBodyTwoAccessPasswordMin = 8;
+export const createProjectBodyTwoAccessPasswordMax = 128;
 
 
 
@@ -60,7 +76,7 @@ export const CreateProjectBody = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(createProjectBodyShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(createProjectBodyOneShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -90,10 +106,10 @@ export const CreateProjectBody = zod.object({
   "id": zod.string(),
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
-  "duration": zod.number().min(createProjectBodyTrainingItemDurationMin),
+  "duration": zod.number().min(createProjectBodyOneTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
-  "costUsd": zod.number().min(createProjectBodyTrainingItemCostUsdMin).optional(),
+  "costUsd": zod.number().min(createProjectBodyOneTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
@@ -104,15 +120,31 @@ export const CreateProjectBody = zod.object({
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),
-  "daysBeforeMc": zod.number().int().min(createProjectBodySettingsDaysBeforeMcMin),
+  "daysBeforeMc": zod.number().int().min(createProjectBodyOneSettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
-  "readyMonthsBefore": zod.number().int().min(createProjectBodySettingsReadyMonthsBeforeMin).optional(),
+  "readyMonthsBefore": zod.number().int().min(createProjectBodyOneSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "staffingMode": zod.enum(['shift', 'local']).optional(),
+  "salaryMedianResearchDone": zod.boolean().optional(),
+  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(createProjectBodyOneSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
+  "laborMarketResearchDone": zod.boolean().optional(),
+  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(createProjectBodyOneSettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
+  "hiringStrategyDone": zod.boolean().optional(),
+  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(createProjectBodyOneSettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
+  "recruitmentLeadValue": zod.number().int().min(createProjectBodyOneSettingsRecruitmentLeadValueMin).optional(),
+  "recruitmentLeadUnit": zod.enum(['days', 'months']).optional(),
+  "onboardingDuration": zod.number().int().min(createProjectBodyOneSettingsOnboardingDurationMin).optional(),
+  "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
+}).and(zod.object({
+  "access": zod.object({
+  "username": zod.string().min(createProjectBodyTwoAccessUsernameMin).max(createProjectBodyTwoAccessUsernameMax),
+  "password": zod.string().min(createProjectBodyTwoAccessPasswordMin).max(createProjectBodyTwoAccessPasswordMax)
 })
+}))
 
 
 export const createProjectResponseShopsItemRolesItemHeadcountMin = 0;
@@ -124,6 +156,16 @@ export const createProjectResponseTrainingItemCostUsdMin = 0;
 export const createProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const createProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const createProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
+
+export const createProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
+
+export const createProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin = 0;
+
+export const createProjectResponseSettingsRecruitmentLeadValueMin = 0;
+
+export const createProjectResponseSettingsOnboardingDurationMin = 0;
 
 
 
@@ -190,6 +232,17 @@ export const CreateProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(createProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "staffingMode": zod.enum(['shift', 'local']).optional(),
+  "salaryMedianResearchDone": zod.boolean().optional(),
+  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(createProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
+  "laborMarketResearchDone": zod.boolean().optional(),
+  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(createProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
+  "hiringStrategyDone": zod.boolean().optional(),
+  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(createProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
+  "recruitmentLeadValue": zod.number().int().min(createProjectResponseSettingsRecruitmentLeadValueMin).optional(),
+  "recruitmentLeadUnit": zod.enum(['days', 'months']).optional(),
+  "onboardingDuration": zod.number().int().min(createProjectResponseSettingsOnboardingDurationMin).optional(),
+  "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -213,6 +266,16 @@ export const getProjectResponseTrainingItemCostUsdMin = 0;
 export const getProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const getProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const getProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
+
+export const getProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
+
+export const getProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin = 0;
+
+export const getProjectResponseSettingsRecruitmentLeadValueMin = 0;
+
+export const getProjectResponseSettingsOnboardingDurationMin = 0;
 
 
 
@@ -279,6 +342,17 @@ export const GetProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(getProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "staffingMode": zod.enum(['shift', 'local']).optional(),
+  "salaryMedianResearchDone": zod.boolean().optional(),
+  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(getProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
+  "laborMarketResearchDone": zod.boolean().optional(),
+  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(getProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
+  "hiringStrategyDone": zod.boolean().optional(),
+  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(getProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
+  "recruitmentLeadValue": zod.number().int().min(getProjectResponseSettingsRecruitmentLeadValueMin).optional(),
+  "recruitmentLeadUnit": zod.enum(['days', 'months']).optional(),
+  "onboardingDuration": zod.number().int().min(getProjectResponseSettingsOnboardingDurationMin).optional(),
+  "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -302,6 +376,16 @@ export const updateProjectBodyTrainingItemCostUsdMin = 0;
 export const updateProjectBodySettingsDaysBeforeMcMin = 0;
 
 export const updateProjectBodySettingsReadyMonthsBeforeMin = 0;
+
+export const updateProjectBodySettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
+
+export const updateProjectBodySettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
+
+export const updateProjectBodySettingsHiringStrategyMonthsBeforeTrainingMin = 0;
+
+export const updateProjectBodySettingsRecruitmentLeadValueMin = 0;
+
+export const updateProjectBodySettingsOnboardingDurationMin = 0;
 
 
 
@@ -366,6 +450,17 @@ export const UpdateProjectBody = zod.object({
   "readyMonthsBefore": zod.number().int().min(updateProjectBodySettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "staffingMode": zod.enum(['shift', 'local']).optional(),
+  "salaryMedianResearchDone": zod.boolean().optional(),
+  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(updateProjectBodySettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
+  "laborMarketResearchDone": zod.boolean().optional(),
+  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(updateProjectBodySettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
+  "hiringStrategyDone": zod.boolean().optional(),
+  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(updateProjectBodySettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
+  "recruitmentLeadValue": zod.number().int().min(updateProjectBodySettingsRecruitmentLeadValueMin).optional(),
+  "recruitmentLeadUnit": zod.enum(['days', 'months']).optional(),
+  "onboardingDuration": zod.number().int().min(updateProjectBodySettingsOnboardingDurationMin).optional(),
+  "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -381,6 +476,16 @@ export const updateProjectResponseTrainingItemCostUsdMin = 0;
 export const updateProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const updateProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const updateProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
+
+export const updateProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
+
+export const updateProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin = 0;
+
+export const updateProjectResponseSettingsRecruitmentLeadValueMin = 0;
+
+export const updateProjectResponseSettingsOnboardingDurationMin = 0;
 
 
 
@@ -447,6 +552,17 @@ export const UpdateProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(updateProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "staffingMode": zod.enum(['shift', 'local']).optional(),
+  "salaryMedianResearchDone": zod.boolean().optional(),
+  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(updateProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
+  "laborMarketResearchDone": zod.boolean().optional(),
+  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(updateProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
+  "hiringStrategyDone": zod.boolean().optional(),
+  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(updateProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
+  "recruitmentLeadValue": zod.number().int().min(updateProjectResponseSettingsRecruitmentLeadValueMin).optional(),
+  "recruitmentLeadUnit": zod.enum(['days', 'months']).optional(),
+  "onboardingDuration": zod.number().int().min(updateProjectResponseSettingsOnboardingDurationMin).optional(),
+  "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
@@ -470,6 +586,19 @@ export const CopyProjectParams = zod.object({
   "projectId": zod.coerce.string()
 })
 
+export const copyProjectBodyUsernameMin = 3;
+export const copyProjectBodyUsernameMax = 64;
+
+export const copyProjectBodyPasswordMin = 8;
+export const copyProjectBodyPasswordMax = 128;
+
+
+
+export const CopyProjectBody = zod.object({
+  "username": zod.string().min(copyProjectBodyUsernameMin).max(copyProjectBodyUsernameMax),
+  "password": zod.string().min(copyProjectBodyPasswordMin).max(copyProjectBodyPasswordMax)
+})
+
 
 export const copyProjectResponseShopsItemRolesItemHeadcountMin = 0;
 
@@ -480,6 +609,16 @@ export const copyProjectResponseTrainingItemCostUsdMin = 0;
 export const copyProjectResponseSettingsDaysBeforeMcMin = 0;
 
 export const copyProjectResponseSettingsReadyMonthsBeforeMin = 0;
+
+export const copyProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
+
+export const copyProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
+
+export const copyProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin = 0;
+
+export const copyProjectResponseSettingsRecruitmentLeadValueMin = 0;
+
+export const copyProjectResponseSettingsOnboardingDurationMin = 0;
 
 
 
@@ -546,10 +685,52 @@ export const CopyProjectResponse = zod.object({
   "readyMonthsBefore": zod.number().int().min(copyProjectResponseSettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
+  "staffingMode": zod.enum(['shift', 'local']).optional(),
+  "salaryMedianResearchDone": zod.boolean().optional(),
+  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(copyProjectResponseSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
+  "laborMarketResearchDone": zod.boolean().optional(),
+  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(copyProjectResponseSettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
+  "hiringStrategyDone": zod.boolean().optional(),
+  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(copyProjectResponseSettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
+  "recruitmentLeadValue": zod.number().int().min(copyProjectResponseSettingsRecruitmentLeadValueMin).optional(),
+  "recruitmentLeadUnit": zod.enum(['days', 'months']).optional(),
+  "onboardingDuration": zod.number().int().min(copyProjectResponseSettingsOnboardingDurationMin).optional(),
+  "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "contractDate": zod.coerce.date().nullable()
 })
 })
+
+
+/**
+ * @summary Set credentials for an unprotected project or authenticate
+ */
+export const AuthenticateProjectParams = zod.object({
+  "projectId": zod.coerce.string()
+})
+
+export const authenticateProjectBodyUsernameMin = 3;
+export const authenticateProjectBodyUsernameMax = 64;
+
+export const authenticateProjectBodyPasswordMin = 8;
+export const authenticateProjectBodyPasswordMax = 128;
+
+
+
+export const AuthenticateProjectBody = zod.object({
+  "username": zod.string().min(authenticateProjectBodyUsernameMin).max(authenticateProjectBodyUsernameMax),
+  "password": zod.string().min(authenticateProjectBodyPasswordMin).max(authenticateProjectBodyPasswordMax)
+})
+
+export const AuthenticateProjectResponse = zod.object({
+  "authenticated": zod.boolean()
+})
+
+
+/**
+ * @summary Clear the current project access session
+ */
+export const LogoutProjectAccessResponse = zod.void()
 
 
 /**

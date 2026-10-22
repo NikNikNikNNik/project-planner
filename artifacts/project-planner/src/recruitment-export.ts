@@ -1,8 +1,9 @@
 import type ExcelJS from 'exceljs';
 import type { Project, Role, TrainingEvent } from '@workspace/api-client-react';
-import { getProjectReadyDate, getShopReadyDate } from './readiness';
+import { getProjectReadyDate, getRecruitmentStartDate, getShopReadyDate } from './readiness.ts';
 
 type RecruitmentRow = {
+  recruitmentStartDate: string | null;
   deadline: string | null;
   readyDate: string | null;
   shop: string;
@@ -70,6 +71,11 @@ function buildRows(project: Project): RecruitmentRow[] {
           : shiftCalendarDays(readyDate, -days)
         : null);
       return {
+        recruitmentStartDate: getRecruitmentStartDate(
+          deadline,
+          project.settings.recruitmentLeadValue,
+          project.settings.recruitmentLeadUnit,
+        ),
         deadline,
         readyDate,
         shop: shop.name,
@@ -118,29 +124,30 @@ export async function createRecruitmentWorkbook(project: Project) {
 
   const byPlant = workbook.addWorksheet('По площадкам');
   byPlant.columns = [
-    { width: 18 }, { width: 20 }, { width: 44 }, { width: 16 },
-    { width: 20 }, { width: 23 }, { width: 20 },
+    { width: 20 }, { width: 18 }, { width: 20 }, { width: 44 },
+    { width: 16 }, { width: 20 }, { width: 23 }, { width: 20 },
   ];
   addIntro(
     byPlant,
-    7,
-    'Срок найма рассчитывается отдельно по каждой профессии: дата готовности минус назначенные ей обучения. Если обучение не связано с конкретными ролями, оно учитывается для всех ролей выбранных площадок. Ручная дата контракта применяется ко всем строкам.',
+    8,
+    'Дата начала рекрутинга рассчитывается с учётом настроек проекта. Срок найма рассчитывается отдельно по каждой профессии: дата готовности минус назначенные ей обучения. Если обучение не связано с конкретными ролями, оно учитывается для всех ролей выбранных площадок. Ручная дата контракта применяется ко всем строкам.',
   );
-  byPlant.addRow(['Дата найма на контракт', 'Площадка', 'Профессия', 'Группа', 'Количество человек', 'Обучение на роль, дней', 'Дата готовности']);
+  byPlant.addRow(['Дата начала рекрутинга', 'Дата найма на контракт', 'Площадка', 'Профессия', 'Группа', 'Количество человек', 'Обучение на роль, дней', 'Дата готовности']);
   const firstDataRow = 5;
   for (const row of recruitmentRows) {
     byPlant.addRow([
-      excelDateSerial(row.deadline), row.shop, row.role, row.group, row.headcount,
-      row.trainingDays, excelDateSerial(row.readyDate),
+      excelDateSerial(row.recruitmentStartDate), excelDateSerial(row.deadline), row.shop,
+      row.role, row.group, row.headcount, row.trainingDays, excelDateSerial(row.readyDate),
     ]);
   }
   byPlant.getRow(4).eachCell(cell => { cell.font = tableHeader.font; cell.fill = tableHeader.fill; cell.alignment = tableHeader.alignment; });
   byPlant.getRow(4).height = 34;
-  byPlant.autoFilter = { from: { row: 4, column: 1 }, to: { row: firstDataRow + recruitmentRows.length - 1, column: 7 } };
+  byPlant.autoFilter = { from: { row: 4, column: 1 }, to: { row: firstDataRow + recruitmentRows.length - 1, column: 8 } };
   byPlant.views = [{ state: 'frozen', ySplit: 4 }];
   for (let row = firstDataRow; row < firstDataRow + recruitmentRows.length; row++) {
     byPlant.getCell(row, 1).numFmt = 'dd.mm.yyyy';
-    byPlant.getCell(row, 7).numFmt = 'dd.mm.yyyy';
+    byPlant.getCell(row, 2).numFmt = 'dd.mm.yyyy';
+    byPlant.getCell(row, 8).numFmt = 'dd.mm.yyyy';
     if (row % 2 === 0) {
       byPlant.getRow(row).eachCell({ includeEmpty: true }, cell => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F0E9' } };
@@ -149,32 +156,47 @@ export async function createRecruitmentWorkbook(project: Project) {
   }
 
   const summary = workbook.addWorksheet('Сводка по профессиям');
-  summary.columns = [{ width: 20 }, { width: 44 }, { width: 16 }, { width: 22 }, { width: 42 }];
-  addIntro(summary, 5, 'Численность суммирована по одинаковым профессиям и срокам найма на всех площадках проекта.');
-  summary.addRow(['Дата найма на контракт', 'Профессия', 'Группа', 'Всего человек', 'Площадки']);
-  const grouped = new Map<string, { deadline: string | null; role: string; group: string; headcount: number; shops: Set<string> }>();
+  summary.columns = [{ width: 20 }, { width: 20 }, { width: 44 }, { width: 16 }, { width: 22 }, { width: 42 }];
+  addIntro(summary, 6, 'Численность суммирована по одинаковым профессиям и срокам найма на всех площадках проекта.');
+  summary.addRow(['Дата начала рекрутинга', 'Дата найма на контракт', 'Профессия', 'Группа', 'Всего человек', 'Площадки']);
+  const grouped = new Map<string, { recruitmentStartDate: string | null; deadline: string | null; role: string; group: string; headcount: number; shops: Set<string> }>();
   for (const row of recruitmentRows) {
-    const key = `${row.deadline ?? ''}|${row.role.toLocaleLowerCase('ru-RU')}|${row.group}`;
-    const current = grouped.get(key) ?? { deadline: row.deadline, role: row.role, group: row.group, headcount: 0, shops: new Set<string>() };
+    const key = `${row.recruitmentStartDate ?? ''}|${row.deadline ?? ''}|${row.role.toLocaleLowerCase('ru-RU')}|${row.group}`;
+    const current = grouped.get(key) ?? {
+      recruitmentStartDate: row.recruitmentStartDate,
+      deadline: row.deadline,
+      role: row.role,
+      group: row.group,
+      headcount: 0,
+      shops: new Set<string>(),
+    };
     current.headcount += row.headcount;
     current.shops.add(row.shop);
     grouped.set(key, current);
   }
   const summaryRows = [...grouped.values()].sort((a, b) =>
-    (a.deadline ?? '9999-12-31').localeCompare(b.deadline ?? '9999-12-31') || a.role.localeCompare(b.role, 'ru'),
+    (a.recruitmentStartDate ?? '9999-12-31').localeCompare(b.recruitmentStartDate ?? '9999-12-31') ||
+    (a.deadline ?? '9999-12-31').localeCompare(b.deadline ?? '9999-12-31') ||
+    a.role.localeCompare(b.role, 'ru'),
   );
   for (const row of summaryRows) {
-    summary.addRow([excelDateSerial(row.deadline), row.role, row.group, row.headcount, [...row.shops].sort((a, b) => a.localeCompare(b, 'ru')).join(', ')]);
+    summary.addRow([
+      excelDateSerial(row.recruitmentStartDate), excelDateSerial(row.deadline), row.role,
+      row.group, row.headcount, [...row.shops].sort((a, b) => a.localeCompare(b, 'ru')).join(', '),
+    ]);
   }
   const summaryTotalRow = 5 + summaryRows.length;
-  summary.addRow(['ИТОГО', '', '', summaryRows.reduce((sum, row) => sum + row.headcount, 0), '']);
+  summary.addRow(['ИТОГО', '', '', '', summaryRows.reduce((sum, row) => sum + row.headcount, 0), '']);
   summary.getRow(4).eachCell(cell => { cell.font = tableHeader.font; cell.fill = tableHeader.fill; cell.alignment = tableHeader.alignment; });
   summary.getRow(4).height = 34;
   summary.getRow(summaryTotalRow).font = { bold: true };
   summary.getRow(summaryTotalRow).getCell(1).font = { bold: true, color: { argb: 'FF293640' } };
-  summary.autoFilter = { from: { row: 4, column: 1 }, to: { row: summaryTotalRow - 1, column: 5 } };
+  summary.autoFilter = { from: { row: 4, column: 1 }, to: { row: summaryTotalRow - 1, column: 6 } };
   summary.views = [{ state: 'frozen', ySplit: 4 }];
-  for (let row = 5; row < summaryTotalRow; row++) summary.getCell(row, 1).numFmt = 'dd.mm.yyyy';
+  for (let row = 5; row < summaryTotalRow; row++) {
+    summary.getCell(row, 1).numFmt = 'dd.mm.yyyy';
+    summary.getCell(row, 2).numFmt = 'dd.mm.yyyy';
+  }
 
   return workbook;
 }

@@ -23,6 +23,9 @@ import type {
   HealthStatus,
   PlanningSummary,
   Project,
+  ProjectAccessCredentials,
+  ProjectAccessResponse,
+  ProjectCreateInput,
   ProjectInput,
   ProjectSummary
 } from './api.schemas';
@@ -220,7 +223,7 @@ export const getCreateProjectUrl = () => {
 /**
  * @summary Create a project
  */
-export const createProject = async (projectInput: ProjectInput, options?: Parameters<typeof customFetch>[1]): Promise<Project> => {
+export const createProject = async (projectCreateInput: ProjectCreateInput, options?: Parameters<typeof customFetch>[1]): Promise<Project> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -241,7 +244,7 @@ return customFetch<Project>(getCreateProjectUrl(),
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(projectInput)
+    body: JSON.stringify(projectCreateInput)
   }
 );}
 
@@ -279,9 +282,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CreateProjectMutationResult = NonNullable<Awaited<ReturnType<typeof createProject>>>
-    export type CreateProjectMutationBody = BodyType<ProjectInput>
+    export type CreateProjectMutationBody = BodyType<ProjectCreateInput>
     export type CreateProjectMutationError = ErrorType<unknown>
-    export type CreateProjectMutationVariables = {data: BodyType<ProjectInput>}
+    export type CreateProjectMutationVariables = {data: BodyType<ProjectCreateInput>}
 
     /**
  * @summary Create a project
@@ -548,14 +551,29 @@ export const getCopyProjectUrl = (projectId: string,) => {
 /**
  * @summary Copy a project
  */
-export const copyProject = async (projectId: string, options?: Parameters<typeof customFetch>[1]): Promise<Project> => {
+export const copyProject = async (projectId: string,
+    projectAccessCredentials: ProjectAccessCredentials, options?: Parameters<typeof customFetch>[1]): Promise<Project> => {
 
-  return customFetch<Project>(getCopyProjectUrl(projectId),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Project>(getCopyProjectUrl(projectId),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(projectAccessCredentials)
   }
 );}
 
@@ -580,9 +598,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof copyProject>>, CopyProjectMutationVariables> = (props) => {
-          const {projectId} = props ?? {};
+          const {projectId,data} = props ?? {};
 
-          return  copyProject(projectId,requestOptions)
+          return  copyProject(projectId,data,requestOptions)
         }
 
 
@@ -593,9 +611,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CopyProjectMutationResult = NonNullable<Awaited<ReturnType<typeof copyProject>>>
-
+    export type CopyProjectMutationBody = BodyType<ProjectAccessCredentials>
     export type CopyProjectMutationError = ErrorType<void>
-    export type CopyProjectMutationVariables = {projectId: string}
+    export type CopyProjectMutationVariables = {projectId: string;data: BodyType<ProjectAccessCredentials>}
 
     /**
  * @summary Copy a project
@@ -609,6 +627,169 @@ export const useCopyProject = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCopyProjectMutationOptions(options));
+    }
+
+export const getAuthenticateProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/projects/${projectId}/access`
+}
+
+/**
+ * @summary Set credentials for an unprotected project or authenticate
+ */
+export const authenticateProject = async (projectId: string,
+    projectAccessCredentials: ProjectAccessCredentials, options?: Parameters<typeof customFetch>[1]): Promise<ProjectAccessResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProjectAccessResponse>(getAuthenticateProjectUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(projectAccessCredentials)
+  }
+);}
+
+
+
+
+
+export const getAuthenticateProjectMutationKey = () => ['authenticateProject'] as const;
+
+export const getAuthenticateProjectMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authenticateProject>>, TError,AuthenticateProjectMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof authenticateProject>>, TError,AuthenticateProjectMutationVariables, TContext> => {
+
+const mutationKey = getAuthenticateProjectMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof authenticateProject>>, AuthenticateProjectMutationVariables> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  authenticateProject(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AuthenticateProjectMutationResult = NonNullable<Awaited<ReturnType<typeof authenticateProject>>>
+    export type AuthenticateProjectMutationBody = BodyType<ProjectAccessCredentials>
+    export type AuthenticateProjectMutationError = ErrorType<void>
+    export type AuthenticateProjectMutationVariables = {projectId: string;data: BodyType<ProjectAccessCredentials>}
+
+    /**
+ * @summary Set credentials for an unprotected project or authenticate
+ */
+export const useAuthenticateProject = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authenticateProject>>, TError,AuthenticateProjectMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof authenticateProject>>,
+        TError,
+        AuthenticateProjectMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAuthenticateProjectMutationOptions(options));
+    }
+
+export const getLogoutProjectAccessUrl = () => {
+
+
+
+
+  return `/api/project-access/logout`
+}
+
+/**
+ * @summary Clear the current project access session
+ */
+export const logoutProjectAccess = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getLogoutProjectAccessUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getLogoutProjectAccessMutationKey = () => ['logoutProjectAccess'] as const;
+
+export const getLogoutProjectAccessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutProjectAccess>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutProjectAccess>>, TError,void, TContext> => {
+
+const mutationKey = getLogoutProjectAccessMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutProjectAccess>>, void> = () => {
+
+
+          return  logoutProjectAccess(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutProjectAccessMutationResult = NonNullable<Awaited<ReturnType<typeof logoutProjectAccess>>>
+
+    export type LogoutProjectAccessMutationError = ErrorType<unknown>
+
+
+    /**
+ * @summary Clear the current project access session
+ */
+export const useLogoutProjectAccess = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutProjectAccess>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logoutProjectAccess>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLogoutProjectAccessMutationOptions(options));
     }
 
 export const getGetPlanningSummaryUrl = () => {

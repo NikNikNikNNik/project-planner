@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
-import { getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles } from './training-planning.ts';
+import { durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles } from './training-planning.ts';
 
 const shopId = 'shop-a';
 const roleA: Role = { id: 'role-a', name: 'Технолог', group: 'itr', visible: true };
@@ -352,4 +352,17 @@ test('a role without training has no dates or colored training bar', () => {
 
   const withoutReadyDate = getRoleTrainingPlan(trainingProject, shopId, roleA.id, null);
   assert.equal(withoutReadyDate.contractDate, null);
+});
+
+test('onboarding durations convert days and weeks using the project day type', () => {
+  assert.equal(durationInDays(4, 'days', 'calendar'), 4);
+  assert.equal(durationInDays(2, 'weeks', 'calendar'), 14);
+  assert.equal(durationInDays(2, 'weeks', 'working'), 10);
+});
+
+test('onboarding starts once before the first training date', () => {
+  assert.equal(getOnboardingStartDate('2026-06-15', 2, 'weeks', 'calendar'), '2026-06-01');
+  assert.equal(getOnboardingStartDate('2026-06-15', 1, 'weeks', 'working'), '2026-06-08');
+  assert.equal(getOnboardingStartDate('2026-06-15', 0, 'days', 'calendar'), null);
+  assert.equal(getOnboardingStartDate(null, 2, 'weeks', 'calendar'), null);
 });

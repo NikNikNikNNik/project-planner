@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
-import { db, projectsTable } from "@workspace/db";
+import { db, projectCredentialsTable, projectsTable } from "@workspace/db";
 import {
   CopyProjectParams,
   CopyProjectResponse,
@@ -11,10 +11,22 @@ import {
   GetProjectParams,
   GetProjectResponse,
   ListProjectsResponse,
+  AuthenticateProjectBody,
+  CopyProjectBody,
   UpdateProjectBody,
   UpdateProjectParams,
   UpdateProjectResponse,
 } from "@workspace/api-zod";
+import {
+  clearFailedAccess,
+  clearProjectAccessCookie,
+  isRateLimited,
+  makePasswordRecord,
+  recordFailedAccess,
+  requestHasProjectAccess,
+  setProjectAccessCookie,
+  verifyPassword,
+} from "../lib/project-access";
 
 const router: IRouter = Router();
 
@@ -85,31 +97,127 @@ router.post("/projects", async (req, res): Promise<void> => {
   }
 
   const input = parsed.data;
+  const access = input.access;
+  if (!access) {
+    res.status(400).json({ error: "Для проекта необходимо задать логин и пароль" });
+    return;
+  }
   const id = crypto.randomUUID();
-  const [row] = await db
-    .insert(projectsTable)
-    .values({
-      id,
-      title: input.title,
-      startDate: toDateString(input.startDate),
-      endDate: toDateString(input.endDate),
-      plan: {
-        shops: normalizePlanDates(input.shops),
-        phases: normalizePlanDates(input.phases),
-        milestones: normalizePlanDates(input.milestones),
-        training: normalizePlanDates(input.training),
-        settings: normalizePlanDates(input.settings),
-      },
-    })
-    .returning();
+  const passwordRecord = await makePasswordRecord(access.password);
+  const row = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(projectsTable)
+      .values({
+        id,
+        title: input.title,
+        startDate: toDateString(input.startDate),
+        endDate: toDateString(input.endDate),
+        plan: {
+          shops: normalizePlanDates(input.shops),
+          phases: normalizePlanDates(input.phases),
+          milestones: normalizePlanDates(input.milestones),
+          training: normalizePlanDates(input.training),
+          settings: normalizePlanDates(input.settings),
+        },
+      })
+      .returning();
+    await tx.insert(projectCredentialsTable).values({
+      projectId: id,
+      username: access.username.trim().toLowerCase(),
+      ...passwordRecord,
+    });
+    return created;
+  });
 
+  setProjectAccessCookie(res, id);
   res.status(201).json(CreateProjectResponse.parse(projectFromRow(row)));
+});
+
+router.post("/projects/:projectId/access", async (req, res): Promise<void> => {
+  const params = GetProjectParams.safeParse(req.params);
+  const parsedCredentials = AuthenticateProjectBody.safeParse(req.body);
+  if (!params.success || !parsedCredentials.success) {
+    res.status(400).json({ error: "Проверьте логин и пароль" });
+    return;
+  }
+  const { projectId } = params.data;
+  const credentials = parsedCredentials.data;
+  if (isRateLimited(req, projectId)) {
+    res.status(429).json({ error: "Слишком много попыток. Попробуйте позже." });
+    return;
+  }
+
+  const [project] = await db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(eq(projectsTable.id, projectId));
+  if (!project) {
+    res.status(404).json({ error: "Проект не найден" });
+    return;
+  }
+
+  const [savedCredentials] = await db
+    .select()
+    .from(projectCredentialsTable)
+    .where(eq(projectCredentialsTable.projectId, projectId));
+
+  if (!savedCredentials) {
+    const passwordRecord = await makePasswordRecord(credentials.password);
+    const [claimed] = await db
+      .insert(projectCredentialsTable)
+      .values({
+        projectId,
+        username: credentials.username.trim().toLowerCase(),
+        ...passwordRecord,
+      })
+      .onConflictDoNothing()
+      .returning({ projectId: projectCredentialsTable.projectId });
+    if (claimed) {
+      clearFailedAccess(req, projectId);
+      setProjectAccessCookie(res, projectId);
+      res.json({ authenticated: true });
+      return;
+    }
+  }
+
+  const [currentCredentials] = savedCredentials
+    ? [savedCredentials]
+    : await db
+        .select()
+        .from(projectCredentialsTable)
+        .where(eq(projectCredentialsTable.projectId, projectId));
+  if (
+    !currentCredentials ||
+    currentCredentials.username !== credentials.username.trim().toLowerCase() ||
+    !(await verifyPassword(
+      credentials.password,
+      currentCredentials.passwordSalt,
+      currentCredentials.passwordHash,
+    ))
+  ) {
+    recordFailedAccess(req, projectId);
+    res.status(401).json({ error: "Неверный логин или пароль" });
+    return;
+  }
+
+  clearFailedAccess(req, projectId);
+  setProjectAccessCookie(res, projectId);
+  res.json({ authenticated: true });
+});
+
+router.post("/project-access/logout", (_req, res): void => {
+  clearProjectAccessCookie(res);
+  res.sendStatus(204);
 });
 
 router.get("/projects/:projectId", async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!requestHasProjectAccess(req, params.data.projectId)) {
+    res.status(401).json({ error: "Требуется вход в проект" });
     return;
   }
   const [row] = await db
@@ -132,6 +240,10 @@ router.put("/projects/:projectId", async (req, res): Promise<void> => {
   }
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (!requestHasProjectAccess(req, params.data.projectId)) {
+    res.status(401).json({ error: "Требуется вход в проект" });
     return;
   }
 
@@ -166,6 +278,10 @@ router.delete("/projects/:projectId", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  if (!requestHasProjectAccess(req, params.data.projectId)) {
+    res.status(401).json({ error: "Требуется вход в проект" });
+    return;
+  }
   const [row] = await db
     .delete(projectsTable)
     .where(eq(projectsTable.id, params.data.projectId))
@@ -179,8 +295,13 @@ router.delete("/projects/:projectId", async (req, res): Promise<void> => {
 
 router.post("/projects/:projectId/copy", async (req, res): Promise<void> => {
   const params = CopyProjectParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+  const parsedCredentials = CopyProjectBody.safeParse(req.body);
+  if (!params.success || !parsedCredentials.success) {
+    res.status(400).json({ error: "Проверьте идентификатор проекта и данные доступа" });
+    return;
+  }
+  if (!requestHasProjectAccess(req, params.data.projectId)) {
+    res.status(401).json({ error: "Требуется вход в проект" });
     return;
   }
   const [source] = await db
@@ -191,16 +312,27 @@ router.post("/projects/:projectId/copy", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Проект не найден" });
     return;
   }
-  const [copy] = await db
-    .insert(projectsTable)
-    .values({
-      id: crypto.randomUUID(),
-      title: `${source.title} — копия`,
-      startDate: source.startDate,
-      endDate: source.endDate,
-      plan: source.plan,
-    })
-    .returning();
+  const id = crypto.randomUUID();
+  const passwordRecord = await makePasswordRecord(parsedCredentials.data.password);
+  const copy = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(projectsTable)
+      .values({
+        id,
+        title: `${source.title} — копия`,
+        startDate: source.startDate,
+        endDate: source.endDate,
+        plan: source.plan,
+      })
+      .returning();
+    await tx.insert(projectCredentialsTable).values({
+      projectId: id,
+      username: parsedCredentials.data.username.trim().toLowerCase(),
+      ...passwordRecord,
+    });
+    return created;
+  });
+  setProjectAccessCookie(res, id);
   res.status(201).json(CopyProjectResponse.parse(projectFromRow(copy)));
 });
 
