@@ -35,6 +35,17 @@ export function getShopRoleSummary(shop: Shop): ShopRoleSummary {
   };
 }
 
+export function reconcileTrainingRoles(training: TrainingEvent[], shops: Shop[]) {
+  const existingRoleIds = new Set(shops.flatMap(shop => shop.roles.map(role => role.id)));
+
+  return training.flatMap(event => {
+    if (!event.roleIds.length) return [event];
+
+    const roleIds = event.roleIds.filter(id => existingRoleIds.has(id));
+    return roleIds.length ? [{ ...event, roleIds }] : [];
+  });
+}
+
 export function getRoleTrainingEvents(training: TrainingEvent[], shopId: string, roleId: string) {
   return training.filter(event =>
     event.shopIds.includes(shopId) && (!event.roleIds.length || event.roleIds.includes(roleId)),

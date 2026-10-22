@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
-import { getRoleTrainingPlan, getShopRoleSummary } from './training-planning.ts';
+import { getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles } from './training-planning.ts';
 
 const shopId = 'shop-a';
 const roleA: Role = { id: 'role-a', name: 'Технолог', group: 'itr', visible: true };
@@ -68,6 +68,23 @@ test('collapsed shop summary includes only active roles in the correct groups', 
   assert.deepEqual(summary.roles.map(role => role.name), ['Технолог', 'Оператор']);
   assert.deepEqual(summary.itr.map(role => role.name), ['Технолог']);
   assert.deepEqual(summary.workers.map(role => role.name), ['Оператор']);
+});
+
+test('role reconciliation preserves general training and removes only deleted role assignments', () => {
+  const events = [
+    training('general', 'Общее обучение', 2, [shopId], [], 0),
+    training('both-roles', 'Обучение двух ролей', 3, [shopId], [roleA.id, roleB.id], 1),
+    training('only-role-a', 'Обучение только технолога', 4, [shopId], [roleA.id], 2),
+    training('stale-role', 'Обучение устаревшей роли', 5, [shopId], ['deleted-role'], 3),
+  ];
+
+  assert.deepEqual(
+    reconcileTrainingRoles(events, [{ ...shop, roles: [roleB, hiddenRole] }]),
+    [
+      events[0],
+      { ...events[1], roleIds: [roleB.id] },
+    ],
+  );
 });
 
 test('expanded role schedule includes assigned and shop-wide training only, sequentially', () => {

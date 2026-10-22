@@ -22,6 +22,7 @@ import { downloadRecruitmentWorkbook } from './recruitment-export';
 import {
   getRoleTrainingPlan,
   getShopRoleSummary,
+  reconcileTrainingRoles,
   scheduleTrainingTimeline,
   totalTrainingDays,
   trainingDays,
@@ -859,7 +860,7 @@ function Planner() {
     {modal === 'roles' && project && <RolesModal
       project={project}
       onClose={() => setModal(null)}
-      onSave={shops => { patch({ shops }); setModal(null); }}
+      onSave={shops => { patch({ shops, training: reconcileTrainingRoles(project.training, shops) }); setModal(null); }}
       onAddTraining={(event, shopId, role) => {
         const shops = project.shops.map(shop => shop.id !== shopId ? shop : {
           ...shop,
@@ -1095,7 +1096,20 @@ function RolesModal({ project, onClose, onSave, onAddTraining }: { project: Proj
   const [trainingScope, setTrainingScope] = useState<{ shopId: string; roleId: string } | null>(null);
   const updateRole = (shopId: string, roleId: string, changes: Partial<Role>) => setShops(all => all.map(s => s.id === shopId ? { ...s, roles: s.roles.map(r => r.id === roleId ? { ...r, ...changes } : r) } : s));
   const addRole = (shopId: string) => setShops(all => all.map(s => s.id === shopId ? { ...s, roles: [...s.roles, { id: uid(), name: 'Новая роль', group: 'itr', visible: true, headcount: 1 }] } : s));
-  const removeRole = (shopId: string, roleId: string) => setShops(all => all.map(s => s.id === shopId ? { ...s, roles: s.roles.filter(r => r.id !== roleId) } : s));
+  const removeRole = (shopId: string, roleId: string) => {
+    const nextShops = shops.map(shop => shop.id === shopId
+      ? { ...shop, roles: shop.roles.filter(role => role.id !== roleId) }
+      : shop);
+    const nextTraining = reconcileTrainingRoles(project.training, nextShops);
+    const removedTrainingCount = project.training.length - nextTraining.length;
+
+    if (removedTrainingCount > 0 && !window.confirm(
+      `Назначенных только удаляемой роли обучений: ${removedTrainingCount}. Удалить роль и эти обучения? Общие обучения и назначения другим ролям сохранятся.`,
+    )) return;
+
+    setShops(nextShops);
+    setTrainingScope(current => current?.roleId === roleId ? null : current);
+  };
   const saveTrainingForRole = (event: TrainingEvent) => {
     if (!trainingScope) return;
     const role = shops.find(shop => shop.id === trainingScope.shopId)?.roles.find(item => item.id === trainingScope.roleId);
