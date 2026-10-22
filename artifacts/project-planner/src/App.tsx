@@ -20,6 +20,13 @@ import {
 } from '@workspace/api-client-react';
 import { downloadRecruitmentWorkbook } from './recruitment-export';
 import {
+  getRoleTrainingPlan,
+  getShopRoleSummary,
+  scheduleTrainingTimeline,
+  totalTrainingDays,
+  trainingDays,
+} from './training-planning';
+import {
   Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, FileSpreadsheet,
   ChevronDown, ChevronRight, CircleHelp, ClipboardList, Copy, Factory, Flag,
   Layers3, MoreHorizontal, Pencil, Plus, Save, Settings2, ShieldCheck, SlidersHorizontal,
@@ -76,74 +83,6 @@ const categoryNames: Record<string, string> = {
 const statusNames: Record<string, string> = { planned: 'Запланировано', in_progress: 'В процессе', completed: 'Завершено' };
 const plantShort: Record<string, string> = { 'Пиролиз': 'ПИР', 'Бутен1': 'БУТ', 'Полимеризация': 'ПОЛ', 'ОЗХ': 'ОЗХ' };
 const trainingCategories: TrainingEvent['category'][] = ['mandatory', 'technology', 'internship', 'lvcc', 'other'];
-
-function trainingDays(event: TrainingEvent, dayType: 'calendar' | 'working') {
-  const factor = event.unit === 'days'
-    ? 1
-    : event.unit === 'weeks'
-      ? (dayType === 'working' ? 5 : 7)
-      : (dayType === 'working' ? 22 : 30);
-  return Math.max(0, Math.ceil(event.duration * factor));
-}
-
-function totalTrainingDays(events: TrainingEvent[], calculationMode: 'sequential' | 'parallel', dayType: 'calendar' | 'working') {
-  const durations = events.map(event => trainingDays(event, dayType));
-  return calculationMode === 'parallel'
-    ? Math.max(0, ...durations)
-    : durations.reduce((sum, duration) => sum + duration, 0);
-}
-
-type ScheduledTraining = {
-  event: TrainingEvent;
-  startDate: string;
-  endDate: string;
-  durationDays: number;
-  approximate: boolean;
-};
-
-function scheduleTrainingTimeline(project: Project, readyDate: string | null): ScheduledTraining[] {
-  const sorted = [...project.training].sort((a, b) => a.sortOrder - b.sortOrder);
-  const dayType = project.settings.dayType;
-  const anchor = readyDate ?? project.settings.contractDate ?? project.startDate;
-  const approximate = !readyDate && !project.settings.contractDate;
-  const shift = (date: string, days: number) =>
-    dayType === 'working' ? shiftWorkingDays(date, days) : shiftDate(date, days);
-
-  if (project.settings.calculationMode === 'parallel') {
-    return sorted.flatMap(event => {
-      const durationDays = trainingDays(event, dayType);
-      if (durationDays <= 0) return [];
-      const startDate = readyDate ? shift(anchor, -durationDays) : anchor;
-      const endDate = readyDate ?? shift(anchor, durationDays);
-      return [{ event, startDate, endDate, durationDays, approximate }];
-    });
-  }
-
-  const scheduled = new Map<string, ScheduledTraining>();
-  if (readyDate) {
-    let cursor = anchor;
-    for (const event of [...sorted].reverse()) {
-      const durationDays = trainingDays(event, dayType);
-      if (durationDays <= 0) continue;
-      const startDate = shift(cursor, -durationDays);
-      scheduled.set(event.id, { event, startDate, endDate: cursor, durationDays, approximate });
-      cursor = startDate;
-    }
-  } else {
-    let cursor = anchor;
-    for (const event of sorted) {
-      const durationDays = trainingDays(event, dayType);
-      if (durationDays <= 0) continue;
-      const endDate = shift(cursor, durationDays);
-      scheduled.set(event.id, { event, startDate: cursor, endDate, durationDays, approximate });
-      cursor = endDate;
-    }
-  }
-  return sorted.flatMap(event => {
-    const item = scheduled.get(event.id);
-    return item ? [item] : [];
-  });
-}
 
 function offsetInDays(amount: number, unit: 'days' | 'weeks' | 'months', dayType: 'calendar' | 'working') {
   const factor = unit === 'days' ? 1 : unit === 'weeks' ? (dayType === 'working' ? 5 : 7) : (dayType === 'working' ? 22 : 30);
@@ -653,8 +592,9 @@ function Planner() {
                     </div>
                     {project.shops.map((shop, shopIndex) => {
                       const phases = project.phases.filter(p => p.shopIds.includes(shop.id));
-                      const plannedRoles = shop.roles.filter(role => role.visible);
-                      const visibleRoles = plannedRoles.length;
+                      const roleSummary = getShopRoleSummary(shop);
+                      const plannedRoles = roleSummary.roles;
+                      const visibleRoles = roleSummary.count;
                       const rolesExpanded = expandedShopIds.includes(shop.id);
                       const mcReady = project.milestones.mc.date && (!project.milestones.mc.shopIds.length || project.milestones.mc.shopIds.includes(shop.id));
                       return <div key={shop.id} className="border-b border-[#ece8df] last:border-0">
@@ -662,8 +602,8 @@ function Planner() {
                           <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fbfaf5] px-4">
                             <div className="flex items-center gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-md text-[9px] font-extrabold ${['bg-[#e8eee5] text-[#507565]', 'bg-[#f3ead9] text-[#92713c]', 'bg-[#f4e4dc] text-[#a64d32]', 'bg-[#e5ebef] text-[#5e7380]'][shopIndex % 4]}`}>{plantShort[shop.name] ?? `Ц${shopIndex + 1}`}</span><span className="text-xs font-bold">{shop.name}</span></div>
                             <div className="ml-8 mt-1 max-w-[168px] text-[8px] leading-[1.25] text-[#85877e]">
-                              <p className="truncate" title={`ИТР: ${shop.roles.filter(r => r.visible && r.group === 'itr').map(r => r.name).join(', ')}`}>ИТР · {shop.roles.filter(r => r.visible && r.group === 'itr').map(r => r.name).join(', ') || '—'}</p>
-                              <p className="truncate" title={`Рабочие: ${shop.roles.filter(r => r.visible && r.group === 'workers').map(r => r.name).join(', ')}`}>Рабочие · {shop.roles.filter(r => r.visible && r.group === 'workers').map(r => r.name).join(', ') || '—'}</p>
+                              <p className="truncate" title={`ИТР: ${roleSummary.itr.map(r => r.name).join(', ')}`}>ИТР · {roleSummary.itr.map(r => r.name).join(', ') || '—'}</p>
+                              <p className="truncate" title={`Рабочие: ${roleSummary.workers.map(r => r.name).join(', ')}`}>Рабочие · {roleSummary.workers.map(r => r.name).join(', ') || '—'}</p>
                               <div className="mt-0.5 flex items-center gap-1 font-semibold">
                                 <span className="text-[#85877e]">{visibleRoles} в плане</span>
                                 <button type="button" aria-label={`Изменить роли цеха ${shop.name}`} title="Изменить роли" onClick={() => setModal('roles')} className="flex h-5 w-5 items-center justify-center rounded text-[#8b8d83] hover:bg-[#efece3] hover:text-[#bd4c2b]"><Pencil size={10} /></button>
@@ -688,35 +628,28 @@ function Planner() {
                         </div>
                         {phases.length === 0 && <div className="border-t border-dashed border-[#ece8df] py-1 pl-[200px] text-[9px] text-[#a3a195]">Для площадки нет назначенных этапов</div>}
                         {rolesExpanded && (plannedRoles.length ? plannedRoles.map(role => {
-                          const roleEvents = project.training.filter(event =>
-                            event.shopIds.includes(shop.id) && (!event.roleIds.length || event.roleIds.includes(role.id)),
-                          );
-                          const roleSchedule = scheduleTrainingTimeline({ ...project, training: roleEvents }, staffReadyDate);
-                          const roleTrainingDays = totalTrainingDays(roleEvents, project.settings.calculationMode, project.settings.dayType);
-                          const roleStartDate = roleSchedule.length ? roleSchedule.reduce((earliest, item) => item.startDate < earliest ? item.startDate : earliest, roleSchedule[0].startDate) : null;
-                          const roleEndDate = roleSchedule.length ? roleSchedule.reduce((latest, item) => item.endDate > latest ? item.endDate : latest, roleSchedule[0].endDate) : null;
-                          const roleReadyDate = roleEndDate ?? staffReadyDate;
-                          const left = roleStartDate ? position(roleStartDate) : 0;
-                          const barWidth = roleStartDate && roleEndDate ? width(roleStartDate, roleEndDate) : 0;
+                          const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, staffReadyDate);
+                          const left = rolePlan.startDate ? position(rolePlan.startDate) : 0;
+                          const barWidth = rolePlan.startDate && rolePlan.endDate ? width(rolePlan.startDate, rolePlan.endDate) : 0;
                           return <div key={role.id} className="flex min-h-[42px] border-t border-[#ece8df] bg-[#fdfcf8]">
                             <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fdfcf8] pl-10 pr-3">
                               <span className="truncate text-[9px] font-semibold text-[#4f5b58]" title={`${role.name} · ${shop.name}`}>{role.name}</span>
-                              <span className="text-[8px] text-[#85877e]">{roleTrainingDays} дн. обучения</span>
+                              <span className="text-[8px] text-[#85877e]">{rolePlan.totalDays} дн. обучения</span>
                             </div>
                             <div className="timeline-grid relative h-[42px] min-w-0 flex-1">
                               <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
-                              {roleReadyDate && <MilestoneLine date={roleReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
-                              {roleSchedule.length > 0 && roleStartDate && roleEndDate && <Tooltip.Root delayDuration={220}>
+                              {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
+                              {rolePlan.hasTrainingBar && rolePlan.startDate && rolePlan.endDate && <Tooltip.Root delayDuration={220}>
                                 <Tooltip.Trigger asChild>
-                                  <button type="button" aria-label={`Обучение роли ${role.name}: ${roleTrainingDays} дней`} className="absolute top-[19px] z-[3] flex h-[16px] min-w-0 items-center overflow-hidden rounded-[4px] bg-[#557d6e] px-2 text-left text-[9px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]" style={{ left: `${left}%`, width: `${barWidth}%` }}>
-                                    <span className="truncate">{roleTrainingDays} дн. обучения</span>
+                                  <button type="button" aria-label={`Обучение роли ${role.name}: ${rolePlan.totalDays} дней`} className="absolute top-[19px] z-[3] flex h-[16px] min-w-0 items-center overflow-hidden rounded-[4px] bg-[#557d6e] px-2 text-left text-[9px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]" style={{ left: `${left}%`, width: `${barWidth}%` }}>
+                                    <span className="truncate">{rolePlan.totalDays} дн. обучения</span>
                                   </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
                                   <Tooltip.Content side="top" align="start" sideOffset={6} collisionPadding={12} className="z-[100] w-[320px] max-w-[88vw] rounded-lg border border-[#d9d4ca] bg-[#fbfaf5] p-3 text-[#293640] shadow-xl">
                                     <h4 className="mb-2 text-[11px] font-extrabold">Обучения: {role.name}</h4>
                                     <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
-                                      {roleSchedule.map(item => <li key={item.event.id} className="border-t border-[#e9e5dc] pt-2 first:border-0 first:pt-0">
+                                      {rolePlan.schedule.map(item => <li key={item.event.id} className="border-t border-[#e9e5dc] pt-2 first:border-0 first:pt-0">
                                         <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-bold">{item.event.title}</span><span className="shrink-0 text-[9px] text-[#777b76]">{statusNames[item.event.status]}</span></div>
                                         <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[item.event.category]} · {item.event.duration} {item.event.unit === 'days' ? 'дн.' : item.event.unit === 'weeks' ? 'нед.' : 'мес.'} · {item.durationDays} дн. · {fmt(item.startDate)} — {fmt(item.endDate)}{item.event.costUsd !== undefined ? ` · ${formatUsd(item.event.costUsd)}` : ''}</p>
                                       </li>)}
