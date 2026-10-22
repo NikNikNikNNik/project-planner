@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
-import { durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles } from './training-planning.ts';
+import { assignTrainingLanes, durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles } from './training-planning.ts';
 import { createRecruitmentWorkbook } from './recruitment-export.ts';
 
 const shopId = 'shop-a';
@@ -421,4 +421,43 @@ test('onboarding starts once before the first training date', () => {
   assert.equal(getOnboardingStartDate('2026-06-15', 1, 'weeks', 'working'), '2026-06-08');
   assert.equal(getOnboardingStartDate('2026-06-15', 0, 'days', 'calendar'), null);
   assert.equal(getOnboardingStartDate(null, 2, 'weeks', 'calendar'), null);
+});
+
+test('onboarding extends the role preparation window once and moves its hiring cutoff earlier', () => {
+  const trainingProject = project('sequential');
+  trainingProject.settings.onboardingDuration = 5;
+  trainingProject.settings.onboardingUnit = 'days';
+
+  const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, '2026-06-20');
+
+  assert.equal(plan.totalDays, 5);
+  assert.equal(plan.onboardingDurationDays, 5);
+  assert.equal(plan.totalPreparationDays, 10);
+  assert.equal(plan.startDate, '2026-06-15');
+  assert.equal(plan.onboardingStartDate, '2026-06-10');
+  assert.equal(plan.contractDate, '2026-06-10');
+});
+
+test('a manual contract date anchors onboarding before the actual role training', () => {
+  const trainingProject = project('sequential');
+  trainingProject.settings.contractDate = '2026-06-10';
+  trainingProject.settings.onboardingDuration = 5;
+
+  const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, null);
+
+  assert.equal(plan.contractDate, '2026-06-10');
+  assert.equal(plan.onboardingStartDate, '2026-06-10');
+  assert.equal(plan.startDate, '2026-06-15');
+});
+
+test('parallel training events that overlap use separate timeline lanes', () => {
+  const parallelPlan = getRoleTrainingPlan(project('parallel'), shopId, roleA.id, '2026-06-20');
+  const lanes = assignTrainingLanes(parallelPlan.schedule);
+  const laneByEventId = new Map(lanes.map(item => [item.event.id, item.lane]));
+
+  assert.equal(laneByEventId.get('role-a'), 0);
+  assert.equal(laneByEventId.get('general'), 1);
+
+  const sequentialPlan = getRoleTrainingPlan(project('sequential'), shopId, roleA.id, '2026-06-20');
+  assert.deepEqual(assignTrainingLanes(sequentialPlan.schedule).map(item => item.lane), [0, 0]);
 });

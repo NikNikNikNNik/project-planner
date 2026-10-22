@@ -1,6 +1,7 @@
 import type ExcelJS from 'exceljs';
 import type { Project, Role, TrainingEvent } from '@workspace/api-client-react';
 import { getProjectReadyDate, getRecruitmentStartDate, getShopReadyDate } from './readiness.ts';
+import { durationInDays } from './training-planning.ts';
 
 type RecruitmentRow = {
   recruitmentStartDate: string | null;
@@ -11,6 +12,7 @@ type RecruitmentRow = {
   group: string;
   headcount: number;
   trainingDays: number;
+  onboardingDays: number;
 };
 
 const formatDate = (value?: string | null) => value
@@ -65,10 +67,17 @@ function buildRows(project: Project): RecruitmentRow[] {
       .filter(role => role.visible && (role.headcount ?? 1) > 0)
       .map(role => {
       const days = getRoleTrainingDays(project, role, shop.id);
+      const onboardingDays = days > 0
+        ? durationInDays(
+          project.settings.onboardingDuration ?? 0,
+          project.settings.onboardingUnit ?? 'days',
+          project.settings.dayType,
+        )
+        : 0;
       const deadline = project.settings.contractDate ?? (readyDate
         ? project.settings.dayType === 'working'
-          ? shiftWorkingDays(readyDate, -days)
-          : shiftCalendarDays(readyDate, -days)
+          ? shiftWorkingDays(readyDate, -(days + onboardingDays))
+          : shiftCalendarDays(readyDate, -(days + onboardingDays))
         : null);
       return {
         recruitmentStartDate: getRecruitmentStartDate(
@@ -83,6 +92,7 @@ function buildRows(project: Project): RecruitmentRow[] {
         group: role.group === 'itr' ? 'ИТР' : 'Рабочие',
         headcount: role.headcount ?? 1,
         trainingDays: days,
+        onboardingDays,
       };
       });
   });
@@ -143,29 +153,29 @@ export async function createRecruitmentWorkbook(project: Project) {
   const byPlant = workbook.addWorksheet('По площадкам');
   byPlant.columns = [
     { width: 20 }, { width: 18 }, { width: 20 }, { width: 44 },
-    { width: 16 }, { width: 20 }, { width: 23 }, { width: 20 },
+    { width: 16 }, { width: 20 }, { width: 23 }, { width: 20 }, { width: 20 },
   ];
   addIntro(
     byPlant,
-    8,
-    'Дата начала рекрутинга рассчитывается с учётом настроек проекта. Срок найма рассчитывается отдельно по каждой профессии: дата готовности минус назначенные ей обучения. Если обучение не связано с конкретными ролями, оно учитывается для всех ролей выбранных площадок. Ручная дата контракта применяется ко всем строкам.',
+    9,
+    'Дата начала рекрутинга рассчитывается с учётом настроек проекта. Срок найма рассчитывается отдельно по каждой профессии: дата готовности минус назначенные ей обучения и однократный онбординг. Если обучение не связано с конкретными ролями, оно учитывается для всех ролей выбранных площадок. Ручная дата контракта применяется ко всем строкам.',
   );
-  byPlant.addRow(['Дата начала рекрутинга', 'Дата найма на контракт', 'Площадка', 'Профессия', 'Группа', 'Количество человек', 'Обучение на роль, дней', 'Дата готовности']);
+  byPlant.addRow(['Дата начала рекрутинга', 'Дата найма на контракт', 'Площадка', 'Профессия', 'Группа', 'Количество человек', 'Обучение на роль, дней', 'Онбординг на роль, дней', 'Дата готовности']);
   const firstDataRow = 5;
   for (const row of recruitmentRows) {
     byPlant.addRow([
       excelDateSerial(row.recruitmentStartDate), excelDateSerial(row.deadline), row.shop,
-      row.role, row.group, row.headcount, row.trainingDays, excelDateSerial(row.readyDate),
+      row.role, row.group, row.headcount, row.trainingDays, row.onboardingDays, excelDateSerial(row.readyDate),
     ]);
   }
   byPlant.getRow(4).eachCell(cell => { cell.font = tableHeader.font; cell.fill = tableHeader.fill; cell.alignment = tableHeader.alignment; });
   byPlant.getRow(4).height = 34;
-  byPlant.autoFilter = { from: { row: 4, column: 1 }, to: { row: firstDataRow + recruitmentRows.length - 1, column: 8 } };
+  byPlant.autoFilter = { from: { row: 4, column: 1 }, to: { row: firstDataRow + recruitmentRows.length - 1, column: 9 } };
   byPlant.views = [{ state: 'frozen', ySplit: 4 }];
   for (let row = firstDataRow; row < firstDataRow + recruitmentRows.length; row++) {
     byPlant.getCell(row, 1).numFmt = 'dd.mm.yyyy';
     byPlant.getCell(row, 2).numFmt = 'dd.mm.yyyy';
-    byPlant.getCell(row, 8).numFmt = 'dd.mm.yyyy';
+    byPlant.getCell(row, 9).numFmt = 'dd.mm.yyyy';
     if (row % 2 === 0) {
       byPlant.getRow(row).eachCell({ includeEmpty: true }, cell => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F0E9' } };

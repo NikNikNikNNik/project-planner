@@ -69,6 +69,34 @@ test('workbook recruitment date follows a month-based project setting', async ()
   );
 });
 
+test('workbook hiring deadline and preparation duration include onboarding once per role', async () => {
+  const plan = project();
+  plan.settings.contractDate = null;
+  plan.settings.onboardingDuration = 4;
+  plan.settings.onboardingUnit = 'days';
+  plan.training = [{
+    id: 'training-a',
+    title: 'Обучение',
+    category: 'mandatory',
+    duration: 2,
+    unit: 'days',
+    status: 'planned',
+    sortOrder: 0,
+    shopIds: [shopId],
+    roleIds: ['role-a'],
+    note: null,
+  }];
+
+  const workbook = await createRecruitmentWorkbook(plan);
+  assert.ok(workbook);
+  const sheet = workbook.getWorksheet('По площадкам');
+  assert.ok(sheet);
+  assert.equal(sheet.getRow(5).getCell(2).value, excelDateSerial(2027, 6, 4));
+  assert.equal(sheet.getRow(5).getCell(7).value, 2);
+  assert.equal(sheet.getRow(5).getCell(8).value, 4);
+  assert.equal(sheet.getRow(5).getCell(9).value, excelDateSerial(2027, 6, 10));
+});
+
 test('workbook warns that template dates and role counts are unconfirmed', async () => {
   const workbook = await createRecruitmentWorkbook({
     ...project(),

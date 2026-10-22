@@ -8,6 +8,8 @@ export type ScheduledTraining = {
   approximate: boolean;
 };
 
+export type ScheduledTrainingLane = ScheduledTraining & { lane: number };
+
 export type ShopRoleSummary = {
   roles: Role[];
   itr: Role[];
@@ -19,7 +21,10 @@ export type RoleTrainingPlan = {
   events: TrainingEvent[];
   schedule: ScheduledTraining[];
   totalDays: number;
+  onboardingDurationDays: number;
+  totalPreparationDays: number;
   startDate: string | null;
+  onboardingStartDate: string | null;
   endDate: string | null;
   contractDate: string | null;
   readyDate: string | null;
@@ -85,6 +90,14 @@ export function durationInDays(
       ? (dayType === 'working' ? 5 : 7)
       : (dayType === 'working' ? 22 : 30);
   return Math.max(0, Math.ceil(duration * factor));
+}
+
+export function getOnboardingDurationDays(project: Project) {
+  return durationInDays(
+    project.settings.onboardingDuration ?? 0,
+    project.settings.onboardingUnit ?? 'days',
+    project.settings.dayType,
+  );
 }
 
 export function getOnboardingStartDate(
@@ -161,6 +174,22 @@ export function scheduleTrainingTimeline(project: Project, readyDate: string | n
   });
 }
 
+export function assignTrainingLanes(schedule: ScheduledTraining[]): ScheduledTrainingLane[] {
+  const laneEndDates: string[] = [];
+  return [...schedule]
+    .sort((a, b) =>
+      a.startDate.localeCompare(b.startDate) ||
+      a.endDate.localeCompare(b.endDate) ||
+      a.event.sortOrder - b.event.sortOrder,
+    )
+    .map(item => {
+      const availableLane = laneEndDates.findIndex(endDate => endDate <= item.startDate);
+      const lane = availableLane === -1 ? laneEndDates.length : availableLane;
+      laneEndDates[lane] = item.endDate;
+      return { ...item, lane };
+    });
+}
+
 export function getRoleTrainingPlan(
   project: Project,
   shopId: string,
@@ -168,23 +197,47 @@ export function getRoleTrainingPlan(
   readyDate: string | null,
 ): RoleTrainingPlan {
   const events = getRoleTrainingEvents(project.training, shopId, roleId);
-  const schedule = scheduleTrainingTimeline({ ...project, training: events }, readyDate);
+  const onboardingDays = getOnboardingDurationDays(project);
+  const hasTraining = events.some(event => trainingDays(event, project.settings.dayType) > 0);
+  const scheduleProject = !readyDate && project.settings.contractDate && hasTraining && onboardingDays > 0
+    ? {
+        ...project,
+        settings: {
+          ...project.settings,
+          contractDate: project.settings.dayType === 'working'
+            ? shiftWorkingDays(project.settings.contractDate, onboardingDays)
+            : shiftDate(project.settings.contractDate, onboardingDays),
+        },
+      }
+    : project;
+  const schedule = scheduleTrainingTimeline({ ...scheduleProject, training: events }, readyDate);
   const startDate = schedule.length
     ? schedule.reduce((earliest, item) => item.startDate < earliest ? item.startDate : earliest, schedule[0].startDate)
     : null;
   const endDate = schedule.length
     ? schedule.reduce((latest, item) => item.endDate > latest ? item.endDate : latest, schedule[0].endDate)
     : null;
+  const onboardingDurationDays = schedule.length ? onboardingDays : 0;
+  const onboardingStartDate = getOnboardingStartDate(
+    startDate,
+    onboardingDurationDays,
+    'days',
+    project.settings.dayType,
+  );
   const approximateContractDate = schedule.some(item => item.approximate);
   const contractDate = approximateContractDate
     ? null
-    : startDate ?? readyDate ?? project.settings.contractDate;
+    : onboardingStartDate ?? startDate ?? readyDate ?? project.settings.contractDate;
+  const totalDays = totalTrainingDays(events, project.settings.calculationMode, project.settings.dayType);
 
   return {
     events,
     schedule,
-    totalDays: totalTrainingDays(events, project.settings.calculationMode, project.settings.dayType),
+    totalDays,
+    onboardingDurationDays,
+    totalPreparationDays: totalDays + onboardingDurationDays,
     startDate,
+    onboardingStartDate,
     endDate,
     contractDate,
     readyDate: endDate ?? readyDate,
