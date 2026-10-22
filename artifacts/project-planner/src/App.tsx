@@ -995,7 +995,7 @@ function Planner() {
                                   </Tooltip.Content>
                                 </Tooltip.Portal>
                               </Tooltip.Root>}
-                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Старт рекрут." color="#b77a3e" roleSpecific labelSide="right" labelPlacement={recruitmentLabelOverlapsContract ? 'bottom-0.5' : undefined} />}
+                              {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Рекрутинг" color="#b77a3e" roleSpecific labelSide="right" labelPlacement={recruitmentLabelOverlapsContract ? 'bottom-0.5' : undefined} />}
                               {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="На контракт" color="#8060a8" roleSpecific />}
                               {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {trainingLanes.map(item => <Tooltip.Root key={item.event.id} delayDuration={220}>
