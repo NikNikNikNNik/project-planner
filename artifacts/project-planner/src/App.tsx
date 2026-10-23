@@ -64,6 +64,9 @@ const uid = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}
 const addMonths = shiftCalendarMonths;
 const rawDateDiff = (a: string, b: string) => (new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86400000;
 const dateDiff = (a: string, b: string) => Math.max(1, rawDateDiff(a, b));
+const sequentialProject = (project: Project): Project => project.settings.calculationMode === 'sequential'
+  ? project
+  : { ...project, settings: { ...project.settings, calculationMode: 'sequential' } };
 
 const phaseNames: Record<string, string> = {
   construction: 'Стройка', precommissioning: 'ПредПНР',
@@ -261,6 +264,7 @@ function Planner() {
   const [timelineStart, setTimelineStart] = useState('');
   const [timelineEnd, setTimelineEnd] = useState('');
   const [expandedShopIds, setExpandedShopIds] = useState<string[]>([]);
+  const [showTimelinePhases, setShowTimelinePhases] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [toast, setToast] = useState('');
   const initializedId = useRef('');
@@ -276,11 +280,12 @@ function Planner() {
     const data = projectQuery.data;
     if (data && data.id !== initializedId.current) {
       initializedId.current = data.id;
-      setDraft(data);
+      setDraft(sequentialProject(data));
       savedJson.current = JSON.stringify(data);
       setTimelineStart(data.startDate);
       setTimelineEnd(getProjectTimelineEnd(data));
       setExpandedShopIds([]);
+      setShowTimelinePhases(true);
       setZoom(1);
     }
   }, [projectQuery.data]);
@@ -326,12 +331,14 @@ function Planner() {
   });
   const notify = (text: string) => { setToast(text); setTimeout(() => setToast(''), 2600); };
   const activateCreatedProject = (created: Project) => {
+    const normalizedProject = sequentialProject(created);
     qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
     setActiveId(created.id);
-    setDraft(created);
+    setDraft(normalizedProject);
     initializedId.current = created.id;
     savedJson.current = JSON.stringify(created);
+    setShowTimelinePhases(true);
     setModal(null);
   };
   const downloadProjectBackup = (project: Project) => {
@@ -356,6 +363,7 @@ function Planner() {
 
     try {
       const input = parseProjectBackup(await file.text());
+      input.settings.calculationMode = 'sequential';
       createMutation.mutate({ data: { ...input, title: `${input.title} — импорт` } }, {
         onSuccess: created => {
           activateCreatedProject(created);
@@ -487,13 +495,14 @@ function Planner() {
     if (timer.current) clearTimeout(timer.current);
     initializedId.current = '';
     setDraft(null);
+    setShowTimelinePhases(true);
     setActiveId(id);
     qc.removeQueries({ queryKey: getGetProjectQueryKey(id) });
   };
   const copyCurrent = () => {
     if (!projectId) return;
     copyMutation.mutate({ projectId }, {
-      onSuccess: copied => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(copied); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); notify('Создана копия проекта'); },
+      onSuccess: copied => { const normalizedCopy = sequentialProject(copied); qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(normalizedCopy); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); setShowTimelinePhases(true); notify('Создана копия проекта'); },
       onError: () => notify('Не удалось скопировать проект'),
     });
   };
@@ -845,7 +854,13 @@ function Planner() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
-                  <div className="flex items-center gap-2 text-[11px]"><span className="font-bold uppercase tracking-[.12em] text-[#88897f]">Режим расчёта</span><button onClick={() => patch({ settings: { ...project.settings, calculationMode: project.settings.calculationMode === 'parallel' ? 'sequential' : 'parallel' } })} className="control inline-flex h-7 items-center gap-2 px-2.5 text-[11px] font-bold"><span className={`h-1.5 w-1.5 rounded-full ${project.settings.calculationMode === 'parallel' ? 'bg-[#5d8777]' : 'bg-[#bd4c2b]'}`} />{project.settings.calculationMode === 'parallel' ? 'Параллельно' : 'Последовательно'}<ChevronDown size={12} /></button></div>
+                  <div className="flex flex-wrap items-center gap-5 text-[11px]">
+                    <div className="flex items-center gap-2"><span className="font-bold uppercase tracking-[.12em] text-[#88897f]">Режим расчёта</span><span className="control inline-flex h-7 items-center gap-2 px-2.5 font-bold"><span className="h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" />Последовательно</span></div>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-[#596461]">
+                      <input type="checkbox" checked={showTimelinePhases} onChange={event => setShowTimelinePhases(event.target.checked)} className="accent-[#bd4c2b]" />
+                      <span>Показывать этапы</span>
+                    </label>
+                  </div>
                   <div className="flex items-center gap-3 text-[11px] text-[#6f7774]">
                     <span>Готовность персонала</span>
                     <span className="font-semibold text-[#293640]">{fmt(staffReadyDate)}</span>
@@ -872,7 +887,6 @@ function Planner() {
                     <button onClick={() => { const now = iso(new Date()); const span = Math.max(90, Math.round(totalDays / zoom)); setTimelineStart(shiftDate(now, -span * .35)); setTimelineEnd(shiftDate(now, span * .65)); }} className="btn-quiet rounded px-2 py-1 text-[10px] font-bold text-[#bd4c2b]">Сегодня</button>
                   </div>
                 </div>
-                {project.phases.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#f1e9de] text-[#bd4c2b]"><Flag size={17} /></div><div className="text-sm font-bold">В плане пока нет этапов</div><p className="mt-1 text-xs text-[#85877e]">Добавьте этап строительства или пусконаладки.</p><button onClick={() => { setEditingPhase(null); setModal('phase'); }} className="mt-3 text-xs font-bold text-[#b84628]">Добавить этап</button></div> :
                 <div
                   ref={timelineRef}
                   className="overflow-x-auto cursor-grab active:cursor-grabbing"
@@ -881,6 +895,10 @@ function Planner() {
                   onPointerUp={() => { dragRef.current = null; }}
                   onPointerCancel={() => { dragRef.current = null; }}
                 >
+                  {showTimelinePhases && project.phases.length === 0 && <div className="flex items-center justify-between gap-3 border-b border-[#ece8df] bg-[#faf8f2] px-4 py-2.5 text-[10px] text-[#85877e]">
+                    <span>В плане пока нет этапов строительства или пусконаладки.</span>
+                    <button onClick={() => { setEditingPhase(null); setModal('phase'); }} className="shrink-0 font-bold text-[#b84628]">Добавить этап</button>
+                  </div>}
                   <div className="relative min-w-[760px]">
                     <div className="flex border-b border-[#e7e2d8] bg-[#f7f5ee]">
                       <div className="sticky left-0 z-20 w-[184px] shrink-0 bg-[#f7f5ee] px-4 py-2 text-[9px] font-bold uppercase tracking-[.14em] text-[#83867f]">Площадка / этап / обучение</div>
@@ -894,7 +912,9 @@ function Planner() {
                     </div>}
                     {project.shops.map((shop, shopIndex) => {
                       const phases = getShopTimelinePhases(project.phases, project.milestones, shop.id);
-                      const rowMinHeight = Math.max(75, 10 + Math.max(0, phases.length - 1) * 22 + 30);
+                      const rowMinHeight = showTimelinePhases
+                        ? Math.max(75, 10 + Math.max(0, phases.length - 1) * 22 + 30)
+                        : 75;
                       const roleSummary = getShopRoleSummary(shop);
                       const plannedRoles = roleSummary.roles;
                       const visibleRoles = roleSummary.count;
@@ -923,7 +943,7 @@ function Planner() {
                           </div>
                           <div className="timeline-grid relative min-w-0 flex-1 py-2.5">
                             <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
-                            {phases.map((timelinePhase, i) => {
+                            {showTimelinePhases && phases.map((timelinePhase, i) => {
                               const left = position(timelinePhase.startDate);
                               const barWidth = width(timelinePhase.startDate, timelinePhase.endDate);
                               const title = `${timelinePhase.name}: ${fmt(timelinePhase.startDate)} — ${fmt(timelinePhase.endDate)}${timelinePhase.editablePhase ? '. Перетащите полосу, чтобы сдвинуть; края — чтобы изменить даты.' : '. Даты определяются контрольными точками.'}`;
@@ -938,7 +958,7 @@ function Planner() {
                             {rfsuReady && rfsuDate && <MilestoneLine date={rfsuDate} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date, shiftDate(date, REGIME_RAMP_UP_DAYS)]); patch({ milestones: { ...project.milestones, rfsu: withMilestoneShopDate(project.milestones.rfsu, project.shops.map(item => item.id), shop.id, date) } }); }} />}
                           </div>
                         </div>
-                        {phases.length === 0 && <div className="border-t border-dashed border-[#ece8df] py-1 pl-[200px] text-[9px] text-[#a3a195]">Для площадки нет назначенных этапов</div>}
+                        {showTimelinePhases && phases.length === 0 && <div className="border-t border-dashed border-[#ece8df] py-1 pl-[200px] text-[9px] text-[#a3a195]">Для площадки нет назначенных этапов</div>}
                         {rolesExpanded && (plannedRoles.length ? plannedRoles.map(role => {
                           const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, shopReadyDate);
                           const recruitmentStartDate = getRecruitmentStartDate(
@@ -1087,10 +1107,11 @@ function Planner() {
                       />)}
                     </div>}
                   </div>
-                </div>}
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e5e1d7] px-4 py-3 md:px-5">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] text-[#737a77]">
-                    <Legend swatch={phaseColors.construction} label="Стройка" /><Legend swatch={phaseColors.precommissioning} label="ПредПНР" /><Legend swatch={phaseColors.commissioning} label="ПНР" /><Legend swatch={phaseColors.operation} label="Эксплуатация" /><Legend swatch={onboardingColor} label="Онбординг" /><Legend diamond="#bd4c2b" label="MC / RFSU" /><Legend dot="#315f59" label="Готовность персонала" />
+                    {showTimelinePhases && <><Legend swatch={phaseColors.construction} label="Стройка" /><Legend swatch={phaseColors.precommissioning} label="ПредПНР" /><Legend swatch={phaseColors.commissioning} label="ПНР" /><Legend swatch={phaseColors.operation} label="Эксплуатация" /></>}
+                    <Legend swatch={onboardingColor} label="Онбординг" /><Legend diamond="#bd4c2b" label="MC / RFSU" /><Legend dot="#315f59" label="Готовность персонала" />
                     {trainingCategories.map(category => <Legend key={category} swatch={trainingColors[category]} label={categoryNames[category]} />)}
                   </div>
                   <button onClick={() => setModal('settings')} className="inline-flex items-center gap-1 text-[10px] font-bold text-[#6c7570] hover:text-[#bd4c2b]"><SlidersHorizontal size={12} />Настроить расчёт</button>
@@ -1932,7 +1953,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
     <div className="space-y-4 p-6">
       <div className="grid grid-cols-2 gap-3"><Field label="Начало проекта"><input type="date" className="control h-10 w-full px-2 text-xs" value={startDate} onChange={e => setStartDate(e.target.value)} /></Field><Field label="Окончание проекта"><input type="date" className="control h-10 w-full px-2 text-xs" value={endDate} onChange={e => setEndDate(e.target.value)} /></Field></div>
       {invalidRange && <p role="alert" className="text-[10px] font-semibold text-[#a7472e]">Дата окончания не может быть раньше даты начала.</p>}
-      <Field label="Расчёт этапов"><select className="control h-10 w-full px-2 text-xs" value={settings.calculationMode} onChange={e => setSettings(s => ({ ...s, calculationMode: e.target.value as typeof s.calculationMode }))}><option value="parallel">Параллельно — независимые этапы могут идти одновременно</option><option value="sequential">Последовательно — этапы следуют друг за другом</option></select></Field>
+      <Field label="Режим расчёта"><div className="control flex h-10 items-center px-2 text-xs font-semibold">Последовательно — обучающие события идут одно за другим</div></Field>
       <div className="border-t border-[#e8e3d9] pt-4">
         <div className="mb-2 text-[10px] font-extrabold uppercase tracking-[.12em] text-[#88897f]">Готовность персонала</div>
         <div className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f7773]">
