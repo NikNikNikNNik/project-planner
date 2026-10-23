@@ -132,15 +132,16 @@ const defaultShopOptions = [
 ] as const;
 
 const saveRecoveryKey = (projectId: string) => `project-planner:pending-save:${projectId}`;
-function writeSaveRecovery(projectId: string, baseUpdatedAt: string, project: Project): void {
+function writeSaveRecovery(projectId: string, baseUpdatedAt: string, project: Project): boolean {
   try {
     window.sessionStorage.setItem(saveRecoveryKey(projectId), JSON.stringify({
       version: 1,
       baseUpdatedAt,
       project,
     }));
+    return true;
   } catch {
-    // The live draft remains available even if browser storage is full or disabled.
+    return false;
   }
 }
 function clearSaveRecovery(projectId: string): void {
@@ -289,6 +290,7 @@ function Planner() {
   const [draft, setDraft] = useState<Project | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
   const [saveError, setSaveError] = useState('');
+  const [saveRecoveryAvailable, setSaveRecoveryAvailable] = useState(true);
   const [modal, setModal] = useState<'startup' | 'new' | 'phase' | 'training' | 'roles' | 'settings' | null>(null);
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null);
   const [editingTraining, setEditingTraining] = useState<TrainingEvent | null>(null);
@@ -378,13 +380,13 @@ function Planner() {
           setSaveState('saved');
           setSaveError('');
         } else if (newestDraft?.id === updated.id) {
-          writeSaveRecovery(updated.id, updated.updatedAt, newestDraft);
+          setSaveRecoveryAvailable(writeSaveRecovery(updated.id, updated.updatedAt, newestDraft));
         }
       },
       onError: error => {
         const newestDraft = latestDraft.current;
         if (newestDraft?.id === snapshot.id) {
-          writeSaveRecovery(snapshot.id, savedUpdatedAt.current, newestDraft);
+          setSaveRecoveryAvailable(writeSaveRecovery(snapshot.id, savedUpdatedAt.current, newestDraft));
         }
         setSaveState('error');
         setSaveError(getSaveErrorMessage(error));
@@ -417,6 +419,7 @@ function Planner() {
             window.confirm('Найден черновик с несохранёнными изменениями. Восстановить его поверх текущего проекта?')) {
             nextDraft = sequentialProject(recovery.project);
             setToast('Восстановлен локальный черновик. Проверьте и сохраните изменения.');
+            window.setTimeout(() => setToast(''), 4000);
           } else {
             clearSaveRecovery(data.id);
           }
@@ -448,7 +451,7 @@ function Planner() {
       return;
     }
     setSaveState('saving');
-    writeSaveRecovery(draft.id, savedUpdatedAt.current, draft);
+    setSaveRecoveryAvailable(writeSaveRecovery(draft.id, savedUpdatedAt.current, draft));
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => performSaveRef.current(), 700);
     return () => { if (timer.current) clearTimeout(timer.current); };
@@ -527,6 +530,10 @@ function Planner() {
     }
   };
   const openNewProject = () => {
+    if (project && saveState !== 'saved') {
+      notify('Сначала сохраните текущие изменения, затем создавайте новый проект.');
+      return;
+    }
     const dates = defaultMilestoneDates();
     const shopIds = defaultShopOptions.map(shop => shop.id);
     setNewTitle('');
@@ -667,11 +674,15 @@ function Planner() {
       return;
     }
     copyMutation.mutate({ projectId }, {
-      onSuccess: copied => { const normalizedCopy = sequentialProject(copied); qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(normalizedCopy); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); setShowTimelinePhases(true); notify('Создана копия проекта'); },
+      onSuccess: copied => { const normalizedCopy = sequentialProject(copied); qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(normalizedCopy); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); savedUpdatedAt.current = copied.updatedAt; setSaveState('saved'); setSaveError(''); setShowTimelinePhases(true); notify('Создана копия проекта'); },
       onError: () => notify('Не удалось скопировать проект'),
     });
   };
   const removeProject = () => {
+    if (saveState !== 'saved') {
+      notify('Сначала сохраните текущие изменения. Проект пока не удалён.');
+      return;
+    }
     if (!projectId || !window.confirm(`Удалить проект «${draft?.title ?? activeSummary?.title}»? Это действие нельзя отменить.`)) return;
     deleteMutation.mutate({ projectId }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); initializedId.current = ''; setDraft(null); setActiveId(null); notify('Проект удалён'); },
@@ -972,6 +983,18 @@ function Planner() {
           <button data-testid="button-new-project" onClick={openNewProject} className="btn-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold"><Plus size={15} />Новый проект</button>
         </div>
       </header>
+      {saveState === 'error' && <div role="alert" className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#e5b9ad] bg-[#f8eae5] px-4 py-3 text-xs text-[#813a2a] md:mx-8">
+        <div className="min-w-0">
+          <p className="font-bold">Сервер не принял изменения. Черновик остаётся на экране.</p>
+          {saveError && <p className="mt-1 break-words text-[11px]">{saveError}</p>}
+          <p className="mt-1 text-[11px]">
+            {saveRecoveryAvailable
+              ? 'Черновик сохранён в этой вкладке. Исправьте причину отказа или нажмите «Повторить».'
+              : 'Черновик остаётся на экране, но браузер не смог создать резервную копию. Не закрывайте и не обновляйте страницу.'}
+          </p>
+        </div>
+        <button onClick={retrySave} disabled={updateMutation.isPending} className="control h-8 shrink-0 px-3 text-xs font-bold disabled:opacity-50">Повторить</button>
+      </div>}
 
       <div className="mx-auto w-full px-3 py-4 sm:px-4 md:px-6 md:py-6 2xl:px-8">
         <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-[repeat(5,minmax(0,1fr))_minmax(190px,1.25fr)]">
