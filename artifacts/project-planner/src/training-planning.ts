@@ -1,5 +1,6 @@
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
 import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
+import { getShopReadyDate } from './readiness.ts';
 
 export type ScheduledTraining = {
   event: TrainingEvent;
@@ -117,6 +118,24 @@ export function totalTrainingDays(
   return calculationMode === 'parallel'
     ? Math.max(0, ...durations)
     : durations.reduce((sum, duration) => sum + duration, 0);
+}
+
+export function getShopContractDate(project: Project, shopId: string) {
+  const readyDate = getShopReadyDate(project, shopId);
+  if (!readyDate) return project.settings.contractDate ?? null;
+
+  const dayType = getProjectDayType(project.settings);
+  const trainingDaysForShop = totalTrainingDays(
+    project.training.filter(event => event.shopIds.includes(shopId)),
+    project.settings.calculationMode,
+    dayType,
+  );
+  const onboardingDays = trainingDaysForShop > 0 ? getOnboardingDurationDays(project) : 0;
+  const preparationDays = trainingDaysForShop + onboardingDays;
+
+  return dayType === 'working'
+    ? shiftKazakhstanWorkdays(readyDate, -preparationDays, project.settings.additionalNonWorkingDates)
+    : shiftDate(readyDate, -preparationDays);
 }
 
 export function scheduleTrainingTimeline(project: Project, readyDate: string | null): ScheduledTraining[] {

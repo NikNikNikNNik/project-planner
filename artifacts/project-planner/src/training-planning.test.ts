@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
-import { assignTrainingLanes, durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopRoleSummary, reconcileTrainingRoles, scheduleTrainingTimeline } from './training-planning.ts';
+import { assignTrainingLanes, durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopContractDate, getShopRoleSummary, reconcileTrainingRoles, scheduleTrainingTimeline } from './training-planning.ts';
 import { createRecruitmentWorkbook } from './recruitment-export.ts';
 
 const shopId = 'shop-a';
@@ -72,6 +72,29 @@ test('collapsed shop summary includes only active roles in the correct groups', 
   assert.deepEqual(summary.roles.map(role => role.name), ['Технолог', 'Оператор']);
   assert.deepEqual(summary.itr.map(role => role.name), ['Технолог']);
   assert.deepEqual(summary.workers.map(role => role.name), ['Оператор']);
+});
+
+test('shop contract dates use each shop readiness and only that shop training with onboarding', () => {
+  const plan = project('sequential');
+  plan.shops.push({ id: 'shop-b', name: 'Цех B', roles: [] });
+  plan.training = [
+    training('course-a', 'Курс A', 5, [shopId], [], 0),
+    training('course-b', 'Курс B', 2, ['shop-b'], [], 1),
+  ];
+  plan.settings.readyMilestone = 'mc';
+  plan.settings.readyMonthsBefore = 0;
+  plan.settings.readyShopIds = [shopId, 'shop-b'];
+  plan.settings.onboardingDuration = 3;
+  plan.settings.onboardingUnit = 'days';
+  plan.milestones.mc = {
+    date: null,
+    note: null,
+    shopIds: [shopId, 'shop-b'],
+    shopDates: { [shopId]: '2027-01-20', 'shop-b': '2027-06-30' },
+  };
+
+  assert.equal(getShopContractDate(plan, shopId), '2027-01-12');
+  assert.equal(getShopContractDate(plan, 'shop-b'), '2027-06-25');
 });
 
 test('role reconciliation preserves general training and removes only deleted role assignments', () => {
