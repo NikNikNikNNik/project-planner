@@ -265,6 +265,7 @@ function Planner() {
   const [timelineEnd, setTimelineEnd] = useState('');
   const [expandedShopIds, setExpandedShopIds] = useState<string[]>([]);
   const [showTimelinePhases, setShowTimelinePhases] = useState(true);
+  const [trainingTimelineCollapsed, setTrainingTimelineCollapsed] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [toast, setToast] = useState('');
   const initializedId = useRef('');
@@ -286,6 +287,7 @@ function Planner() {
       setTimelineEnd(getProjectTimelineEnd(data));
       setExpandedShopIds([]);
       setShowTimelinePhases(true);
+      setTrainingTimelineCollapsed(false);
       setZoom(1);
     }
   }, [projectQuery.data]);
@@ -1043,12 +1045,25 @@ function Planner() {
                     })}
                     <div className="border-t border-[#e7e2d8] bg-[#faf8f2]">
                       <div className="flex min-h-10 border-b border-[#ece8df]">
-                        <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 items-center gap-2 bg-[#faf8f2] px-4"><span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#e8e6f0] text-[#696182]"><Users size={13} /></span><span className="text-[10px] font-bold">Подготовка кадров</span></div>
+                        <button
+                          type="button"
+                          aria-expanded={!trainingTimelineCollapsed}
+                          aria-controls="training-timeline-events"
+                          aria-label={trainingTimelineCollapsed ? 'Развернуть подготовку кадров' : 'Свернуть подготовку кадров'}
+                          title={trainingTimelineCollapsed ? 'Развернуть подготовку кадров' : 'Свернуть подготовку кадров'}
+                          onClick={() => setTrainingTimelineCollapsed(collapsed => !collapsed)}
+                          className="sticky left-0 z-[5] flex w-[184px] shrink-0 items-center gap-1.5 bg-[#faf8f2] px-4 text-left hover:bg-[#f1eee5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]"
+                        >
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e8e6f0] text-[#696182]"><Users size={13} /></span>
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-bold">Подготовка кадров</span>
+                          <ChevronDown size={12} className={`shrink-0 transition-transform ${trainingTimelineCollapsed ? '-rotate-90' : ''}`} />
+                        </button>
                         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-[9px] text-[#726b82]">
                           <span>{project.training.length} мероприятий</span><span>·</span><span>{plannedPreparationDays} {projectDayType === 'working' ? 'рабочих' : 'календарных'} дней с учётом онбординга</span>
                           <span className="hidden sm:inline">· Длительности учитываются {project.settings.calculationMode === 'sequential' ? 'последовательно' : 'параллельно'}</span>
                         </div>
                       </div>
+                      <div id="training-timeline-events" hidden={trainingTimelineCollapsed}>
                       {trainingTimeline.map(item => {
                         const event = item.event;
                         const eventShops = project.shops.filter(shop => event.shopIds.includes(shop.id));
@@ -1094,6 +1109,7 @@ function Planner() {
                         </div>;
                       })}
                       {trainingTimeline.length === 0 && <div className="flex min-h-[38px] items-center pl-[200px] text-[9px] text-[#99978c]">Добавьте обучение с длительностью больше нуля, чтобы увидеть его на шкале.</div>}
+                      </div>
                     </div>
                     {hiringResearchMilestones.length > 0 && <div className="pointer-events-none absolute bottom-0 left-[184px] right-0 top-8 z-[6]">
                       {hiringResearchMilestones.map((item, index) => <MilestoneLine
