@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
@@ -46,10 +46,11 @@ import {
 } from './readiness';
 import { getProjectTimelineEnd, getShopTimelinePhases, REGIME_RAMP_UP_DAYS } from './timeline-phases';
 import { isTimelineInteractiveTarget } from './timeline-interactions';
+import { parseProjectBackup, serializeProjectBackup } from './project-backup';
 import {
-  Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, FileSpreadsheet,
+  Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, Download, FileSpreadsheet,
   ChevronDown, ChevronRight, CircleHelp, Copy, Factory, Flag,
-  Pencil, Plus, Save, Settings2, SlidersHorizontal,
+  Pencil, Plus, Save, Settings2, SlidersHorizontal, Upload,
   Trash2, Users, ZoomIn, ZoomOut,
 } from 'lucide-react';
 
@@ -265,6 +266,7 @@ function Planner() {
   const savedJson = useRef('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const projectImportInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<{ x: number; start: string; end: string; span: number } | null>(null);
   const phaseDragRef = useRef<{ id: string; x: number; start: string; end: string; span: number; mode: 'move' | 'start' | 'end' } | null>(null);
   const phaseMovedRef = useRef(false);
@@ -322,6 +324,48 @@ function Planner() {
     };
   });
   const notify = (text: string) => { setToast(text); setTimeout(() => setToast(''), 2600); };
+  const activateCreatedProject = (created: Project) => {
+    qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
+    setActiveId(created.id);
+    setDraft(created);
+    initializedId.current = created.id;
+    savedJson.current = JSON.stringify(created);
+    setModal(null);
+  };
+  const downloadProjectBackup = (project: Project) => {
+    try {
+      const title = project.title.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/\s+/g, '_').slice(0, 80) || 'project';
+      const file = new Blob([serializeProjectBackup(project)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${title}.project.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      notify('Файл проекта выгружен');
+    } catch {
+      notify('Не удалось выгрузить проект');
+    }
+  };
+  const importProjectBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+
+    try {
+      const input = parseProjectBackup(await file.text());
+      createMutation.mutate({ data: { ...input, title: `${input.title} — импорт` } }, {
+        onSuccess: created => {
+          activateCreatedProject(created);
+          notify('Проект загружен как новая копия');
+        },
+        onError: () => notify('Сервер отклонил файл. Проверьте его целостность и версию формата.'),
+      });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Не удалось прочитать файл проекта.');
+    }
+  };
   const openNewProject = () => {
     const dates = defaultMilestoneDates();
     const shopIds = defaultShopOptions.map(shop => shop.id);
@@ -432,10 +476,8 @@ function Planner() {
     const readyMilestone = newReadyMilestone || firstEffectiveRule?.milestone || 'mc';
     createMutation.mutate({ data: makeProjectInput(title, readyMonthsBefore, readyMilestone, newReadyShopIds, readyShopRules, newMcDates, newRfsuDates, startupAnswers) }, {
       onSuccess: created => {
-        qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-        qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
-        setActiveId(created.id); setDraft(created); initializedId.current = created.id;
-        savedJson.current = JSON.stringify(created); setModal(null); setNewTitle('');
+        activateCreatedProject(created);
+        setNewTitle('');
       },
       onError: () => notify('Не удалось создать проект. Повторите попытку.'),
     });
@@ -1053,7 +1095,7 @@ function Planner() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
                 <section className="panel rounded-xl">
                   <div className="flex items-center justify-between border-b border-[#e5e1d7] px-4 py-3"><div><h3 className="text-xs font-extrabold">Подготовка персонала</h3><p className="mt-0.5 text-[10px] text-[#85877e]">Суммарно: {plannedTrainingDays} дн. обучения{plannedPreparationDays > plannedTrainingDays ? ` + ${plannedPreparationDays - plannedTrainingDays} дн. онбординга` : ''} · {project.settings.calculationMode === 'sequential' ? 'последовательный режим' : 'параллельный режим'}</p></div><button onClick={() => { setEditingTraining(null); setModal('training'); }} className="btn-quiet flex h-7 items-center gap-1 rounded px-2 text-[10px] font-bold text-[#bd4c2b]"><Plus size={12} />Добавить обучение</button></div>
                   {project.training.length === 0 && <div className="px-4 py-5 text-[11px] text-[#878980]">Добавьте мероприятия: их длительность будет учтена при расчёте даты контракта.</div>}
@@ -1109,6 +1151,21 @@ function Planner() {
                     />
                 </section>
               </div>
+              <section className="panel mt-4 flex flex-col gap-3 rounded-xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-xs font-extrabold">Резервная копия проекта</h3>
+                  <p className="mt-1 text-[10px] text-[#85877e]">Один JSON-файл содержит все данные проекта. Загрузка создаст отдельный проект с пометкой «импорт».</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button type="button" data-testid="button-export-project" onClick={() => downloadProjectBackup(project)} className="control inline-flex h-9 items-center gap-1.5 px-3 text-xs font-bold text-[#56645e]">
+                    <Download size={14} />Выгрузить проект
+                  </button>
+                  <button type="button" data-testid="button-import-project" onClick={() => projectImportInputRef.current?.click()} disabled={createMutation.isPending || saveState !== 'saved'} title={saveState !== 'saved' ? 'Дождитесь сохранения текущего проекта' : undefined} className="btn-primary inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50">
+                    <Upload size={14} />{createMutation.isPending ? 'Загрузка…' : 'Загрузить проект'}
+                  </button>
+                  <input ref={projectImportInputRef} type="file" accept=".json,application/json" className="hidden" aria-label="Выбрать файл резервной копии проекта" onChange={event => void importProjectBackup(event)} />
+                </div>
+              </section>
             </>}
           </section>
         </div>
