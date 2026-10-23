@@ -36,34 +36,28 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem)
  * @summary Create a project
  */
 
-export const createProjectBodyOneShopsItemRolesItemHeadcountMin = 0;
+export const createProjectBodyShopsItemRolesItemHeadcountMin = 0;
 
-export const createProjectBodyOneTrainingItemDurationMin = 0;
+export const createProjectBodyTrainingItemDurationMin = 0;
 
-export const createProjectBodyOneTrainingItemCostUsdMin = 0;
+export const createProjectBodyTrainingItemCostUsdMin = 0;
 
-export const createProjectBodyOneSettingsDaysBeforeMcMin = 0;
+export const createProjectBodySettingsDaysBeforeMcMin = 0;
 
-export const createProjectBodyOneSettingsReadyMonthsBeforeMin = 0;
+export const createProjectBodySettingsReadyMonthsBeforeMin = 0;
 
-export const createProjectBodyOneSettingsReadyShopRulesMonthsBeforeMin = 0;
+export const createProjectBodySettingsReadyShopRulesMonthsBeforeMin = 0;
 
-export const createProjectBodyOneSettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
+export const createProjectBodySettingsSalaryMedianResearchMonthsBeforeTrainingMin = 0;
 
-export const createProjectBodyOneSettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
+export const createProjectBodySettingsLaborMarketResearchMonthsBeforeTrainingMin = 0;
 
-export const createProjectBodyOneSettingsHiringStrategyMonthsBeforeTrainingMin = 0;
+export const createProjectBodySettingsHiringStrategyMonthsBeforeTrainingMin = 0;
 
-export const createProjectBodyOneSettingsRecruitmentLeadValueMin = 0;
+export const createProjectBodySettingsRecruitmentLeadValueMin = 0;
 
-export const createProjectBodyOneSettingsOnboardingDurationMin = 0;
+export const createProjectBodySettingsOnboardingDurationMin = 0;
 
-
-export const createProjectBodyTwoAccessUsernameMin = 3;
-export const createProjectBodyTwoAccessUsernameMax = 64;
-
-export const createProjectBodyTwoAccessPasswordMin = 8;
-export const createProjectBodyTwoAccessPasswordMax = 128;
 
 
 
@@ -79,7 +73,7 @@ export const CreateProjectBody = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(createProjectBodyOneShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(createProjectBodyShopsItemRolesItemHeadcountMin).optional()
 }))
 })),
   "phases": zod.array(zod.object({
@@ -109,10 +103,10 @@ export const CreateProjectBody = zod.object({
   "id": zod.string(),
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
-  "duration": zod.number().min(createProjectBodyOneTrainingItemDurationMin),
+  "duration": zod.number().min(createProjectBodyTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
-  "costUsd": zod.number().min(createProjectBodyOneTrainingItemCostUsdMin).optional(),
+  "costUsd": zod.number().min(createProjectBodyTrainingItemCostUsdMin).optional(),
   "shopIds": zod.array(zod.string()),
   "roleIds": zod.array(zod.string()),
   "note": zod.string().nullable(),
@@ -123,25 +117,25 @@ export const CreateProjectBody = zod.object({
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),
-  "daysBeforeMc": zod.number().int().min(createProjectBodyOneSettingsDaysBeforeMcMin),
+  "daysBeforeMc": zod.number().int().min(createProjectBodySettingsDaysBeforeMcMin),
   "readyOffsetUnit": zod.enum(['days', 'weeks', 'months']).optional(),
-  "readyMonthsBefore": zod.number().int().min(createProjectBodyOneSettingsReadyMonthsBeforeMin).optional(),
+  "readyMonthsBefore": zod.number().int().min(createProjectBodySettingsReadyMonthsBeforeMin).optional(),
   "readyMilestone": zod.enum(['mc', 'rfsu']).optional(),
   "readyShopIds": zod.array(zod.string()).optional(),
   "readyShopRules": zod.record(zod.string(), zod.object({
-  "monthsBefore": zod.number().int().min(createProjectBodyOneSettingsReadyShopRulesMonthsBeforeMin),
+  "monthsBefore": zod.number().int().min(createProjectBodySettingsReadyShopRulesMonthsBeforeMin),
   "milestone": zod.enum(['mc', 'rfsu'])
 })).optional(),
   "staffingMode": zod.enum(['shift', 'local']).optional(),
   "salaryMedianResearchDone": zod.boolean().optional(),
-  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(createProjectBodyOneSettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
+  "salaryMedianResearchMonthsBeforeTraining": zod.number().int().min(createProjectBodySettingsSalaryMedianResearchMonthsBeforeTrainingMin).optional(),
   "laborMarketResearchDone": zod.boolean().optional(),
-  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(createProjectBodyOneSettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
+  "laborMarketResearchMonthsBeforeTraining": zod.number().int().min(createProjectBodySettingsLaborMarketResearchMonthsBeforeTrainingMin).optional(),
   "hiringStrategyDone": zod.boolean().optional(),
-  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(createProjectBodyOneSettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
-  "recruitmentLeadValue": zod.number().int().min(createProjectBodyOneSettingsRecruitmentLeadValueMin).optional(),
+  "hiringStrategyMonthsBeforeTraining": zod.number().int().min(createProjectBodySettingsHiringStrategyMonthsBeforeTrainingMin).optional(),
+  "recruitmentLeadValue": zod.number().int().min(createProjectBodySettingsRecruitmentLeadValueMin).optional(),
   "recruitmentLeadUnit": zod.enum(['days', 'months']).optional(),
-  "onboardingDuration": zod.number().int().min(createProjectBodyOneSettingsOnboardingDurationMin).optional(),
+  "onboardingDuration": zod.number().int().min(createProjectBodySettingsOnboardingDurationMin).optional(),
   "onboardingUnit": zod.enum(['days', 'weeks']).optional(),
   "dayType": zod.enum(['calendar', 'working']),
   "additionalNonWorkingDates": zod.array(zod.object({
@@ -151,12 +145,7 @@ export const CreateProjectBody = zod.object({
   "contractDate": zod.coerce.date().nullable(),
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
-}).and(zod.object({
-  "access": zod.object({
-  "username": zod.string().min(createProjectBodyTwoAccessUsernameMin).max(createProjectBodyTwoAccessUsernameMax),
-  "password": zod.string().min(createProjectBodyTwoAccessPasswordMin).max(createProjectBodyTwoAccessPasswordMax)
 })
-}))
 
 
 export const createProjectResponseShopsItemRolesItemHeadcountMin = 0;
@@ -646,19 +635,6 @@ export const CopyProjectParams = zod.object({
   "projectId": zod.coerce.string()
 })
 
-export const copyProjectBodyUsernameMin = 3;
-export const copyProjectBodyUsernameMax = 64;
-
-export const copyProjectBodyPasswordMin = 8;
-export const copyProjectBodyPasswordMax = 128;
-
-
-
-export const CopyProjectBody = zod.object({
-  "username": zod.string().min(copyProjectBodyUsernameMin).max(copyProjectBodyUsernameMax),
-  "password": zod.string().min(copyProjectBodyPasswordMin).max(copyProjectBodyPasswordMax)
-})
-
 
 export const copyProjectResponseShopsItemRolesItemHeadcountMin = 0;
 
@@ -772,37 +748,6 @@ export const CopyProjectResponse = zod.object({
   "templateDataStatus": zod.enum(['unconfirmed', 'confirmed']).optional()
 })
 })
-
-
-/**
- * @summary Set credentials for an unprotected project or authenticate
- */
-export const AuthenticateProjectParams = zod.object({
-  "projectId": zod.coerce.string()
-})
-
-export const authenticateProjectBodyUsernameMin = 3;
-export const authenticateProjectBodyUsernameMax = 64;
-
-export const authenticateProjectBodyPasswordMin = 8;
-export const authenticateProjectBodyPasswordMax = 128;
-
-
-
-export const AuthenticateProjectBody = zod.object({
-  "username": zod.string().min(authenticateProjectBodyUsernameMin).max(authenticateProjectBodyUsernameMax),
-  "password": zod.string().min(authenticateProjectBodyPasswordMin).max(authenticateProjectBodyPasswordMax)
-})
-
-export const AuthenticateProjectResponse = zod.object({
-  "authenticated": zod.boolean()
-})
-
-
-/**
- * @summary Clear the current project access session
- */
-export const LogoutProjectAccessResponse = zod.void()
 
 
 /**

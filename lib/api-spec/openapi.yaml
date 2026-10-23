@@ -49,7 +49,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProjectCreateInput"
+              $ref: "#/components/schemas/ProjectInput"
       responses:
         "201":
           description: Created project
@@ -114,12 +114,6 @@ paths:
           required: true
           schema:
             type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProjectAccessCredentials"
       responses:
         "201":
           description: Copied project
@@ -129,44 +123,6 @@ paths:
                 $ref: "#/components/schemas/Project"
         "404":
           description: Project not found
-  /projects/{projectId}/access:
-    post:
-      operationId: authenticateProject
-      tags: [projects]
-      summary: Set credentials for an unprotected project or authenticate
-      parameters:
-        - name: projectId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProjectAccessCredentials"
-      responses:
-        "200":
-          description: Authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectAccessResponse"
-        "401":
-          description: Invalid credentials
-        "404":
-          description: Project not found
-        "429":
-          description: Too many attempts
-  /project-access/logout:
-    post:
-      operationId: logoutProjectAccess
-      tags: [projects]
-      summary: Clear the current project access session
-      responses:
-        "204":
-          description: Session cleared
   /planning/summary:
     get:
       operationId: getPlanningSummary
@@ -359,25 +315,6 @@ components:
           type: array
           items: { $ref: "#/components/schemas/TrainingEvent" }
         settings: { $ref: "#/components/schemas/ProjectSettings" }
-    ProjectAccessCredentials:
-      type: object
-      required: [username, password]
-      properties:
-        username: { type: string, minLength: 3, maxLength: 64 }
-        password: { type: string, minLength: 8, maxLength: 128 }
-    ProjectCreateInput:
-      allOf:
-        - $ref: "#/components/schemas/ProjectInput"
-        - type: object
-          required: [access]
-          properties:
-            access:
-              $ref: "#/components/schemas/ProjectAccessCredentials"
-    ProjectAccessResponse:
-      type: object
-      required: [authenticated]
-      properties:
-        authenticated: { type: boolean }
     PlanningSummary:
       type: object
       required: [projectCount, phaseCount, trainingCount, activeTrainingCount]

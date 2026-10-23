@@ -20,7 +20,6 @@ test("project routes expose each contract operation exactly once", () => {
     "PUT /projects/:projectId",
     "DELETE /projects/:projectId",
     "POST /projects/:projectId/copy",
-    "POST /projects/:projectId/access",
   ]) {
     assert.ok(keys.includes(key), `Missing route: ${key}`);
   }
@@ -34,12 +33,20 @@ test("reading and copying projects never invoke deletion", () => {
   }
 });
 
-test("new projects validate creation credentials without requiring an existing session", () => {
+test("projects are created without access credentials", () => {
   const route = routes.find(item => item.key === "POST /projects");
   assert.ok(route);
   assert.match(route.body, /CreateProjectBody\.safeParse\(req\.body\)/);
   assert.match(route.body, /rejectInvalidTrainingRoleReferences\(input, res\)/);
-  assert.doesNotMatch(route.body, /requestHasProjectAccess/);
+  assert.doesNotMatch(route.body, /credentials|access|password|username/i);
+});
+
+test("project routes do not require authentication", () => {
+  for (const route of routes) {
+    assert.doesNotMatch(route.body, /requestHasProjectAccess|AuthenticateProjectBody|CopyProjectBody/);
+  }
+  assert.doesNotMatch(source, /router\.post\("\/projects\/:projectId\/access"/);
+  assert.doesNotMatch(source, /project-access\/logout/);
 });
 
 test("saving a project updates its plan and validates deleted role assignments", () => {

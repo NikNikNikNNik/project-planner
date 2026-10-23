@@ -288,27 +288,6 @@ export interface ProjectInput {
   settings: ProjectSettings;
 }
 
-export interface ProjectAccessCredentials {
-  /**
-     * @minLength 3
-     * @maxLength 64
-     */
-  username: string;
-  /**
-     * @minLength 8
-     * @maxLength 128
-     */
-  password: string;
-}
-
-export type ProjectCreateInput = ProjectInput & {
-  access: ProjectAccessCredentials;
-};
-
-export interface ProjectAccessResponse {
-  authenticated: boolean;
-}
-
 export interface PlanningSummary {
   projectCount: number;
   phaseCount: number;

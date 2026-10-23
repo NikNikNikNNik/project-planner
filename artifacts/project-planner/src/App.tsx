@@ -2,8 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type Po
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
-  authenticateProject,
-  logoutProjectAccess,
   useCopyProject,
   useCreateProject,
   useDeleteProject,
@@ -223,29 +221,19 @@ function Planner() {
   const projects = projectsQuery.data ?? [];
   const [activeId, setActiveId] = useState<string | null>(null);
   const [portfolioOpen, setPortfolioOpen] = useState(false);
-  const [accessGrantedId, setAccessGrantedId] = useState<string | null>(null);
   const activeSummary = projects.find(p => p.id === activeId);
   const projectId = activeId ?? '';
-  const projectQuery = useGetProject(projectId, { query: { enabled: !!projectId && accessGrantedId === projectId, queryKey: getGetProjectQueryKey(projectId) } });
+  const projectQuery = useGetProject(projectId, { query: { enabled: !!projectId, queryKey: getGetProjectQueryKey(projectId) } });
   const createMutation = useCreateProject();
   const deleteMutation = useDeleteProject();
   const copyMutation = useCopyProject();
   const updateMutation = useUpdateProject();
   const [draft, setDraft] = useState<Project | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
-  const [modal, setModal] = useState<'startup' | 'new' | 'access' | 'copy' | 'phase' | 'training' | 'roles' | 'settings' | null>(null);
+  const [modal, setModal] = useState<'startup' | 'new' | 'phase' | 'training' | 'roles' | 'settings' | null>(null);
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null);
   const [editingTraining, setEditingTraining] = useState<TrainingEvent | null>(null);
   const [newTitle, setNewTitle] = useState('');
-  const [newUsername, setNewUsername] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [accessUsername, setAccessUsername] = useState('');
-  const [accessPassword, setAccessPassword] = useState('');
-  const [accessReady, setAccessReady] = useState(false);
-  const [accessError, setAccessError] = useState('');
-  const [accessSubmitting, setAccessSubmitting] = useState(false);
-  const [copyUsername, setCopyUsername] = useState('');
-  const [copyPassword, setCopyPassword] = useState('');
   const [newStaffingMode, setNewStaffingMode] = useState<WorkforceMode | ''>('');
   const [newSalaryMedianResearchDone, setNewSalaryMedianResearchDone] = useState<boolean | null>(null);
   const [newLaborMarketResearchDone, setNewLaborMarketResearchDone] = useState<boolean | null>(null);
@@ -338,8 +326,6 @@ function Planner() {
     const dates = defaultMilestoneDates();
     const shopIds = defaultShopOptions.map(shop => shop.id);
     setNewTitle('');
-    setNewUsername('');
-    setNewPassword('');
     setNewStaffingMode('');
     setNewSalaryMedianResearchDone(null);
     setNewLaborMarketResearchDone(null);
@@ -426,7 +412,6 @@ function Planner() {
       onboardingDuration,
       onboardingUnit: newOnboardingUnit,
     };
-    if (newUsername.trim().length < 3 || newPassword.length < 8) return;
     const readyShopRules = Object.fromEntries(newReadyShopIds.flatMap(shopId => {
       const rule = newReadyShopRules[shopId];
       if (!rule || rule.monthsBefore === '' || !Number.isInteger(Number(rule.monthsBefore)) || Number(rule.monthsBefore) < 0 ||
@@ -445,16 +430,12 @@ function Planner() {
       ? readyMonths
       : firstEffectiveRule?.monthsBefore ?? 0;
     const readyMilestone = newReadyMilestone || firstEffectiveRule?.milestone || 'mc';
-    createMutation.mutate({ data: {
-      ...makeProjectInput(title, readyMonthsBefore, readyMilestone, newReadyShopIds, readyShopRules, newMcDates, newRfsuDates, startupAnswers),
-      access: { username: newUsername.trim(), password: newPassword },
-    } }, {
+    createMutation.mutate({ data: makeProjectInput(title, readyMonthsBefore, readyMilestone, newReadyShopIds, readyShopRules, newMcDates, newRfsuDates, startupAnswers) }, {
       onSuccess: created => {
         qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
         qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
-        setAccessGrantedId(created.id);
         setActiveId(created.id); setDraft(created); initializedId.current = created.id;
-        savedJson.current = JSON.stringify(created); setModal(null); setNewTitle(''); setNewUsername(''); setNewPassword('');
+        savedJson.current = JSON.stringify(created); setModal(null); setNewTitle('');
       },
       onError: () => notify('Не удалось создать проект. Повторите попытку.'),
     });
@@ -463,60 +444,20 @@ function Planner() {
     if (timer.current) clearTimeout(timer.current);
     initializedId.current = '';
     setDraft(null);
-    setAccessGrantedId(null);
-    setAccessUsername('');
-    setAccessPassword('');
-    setAccessError('');
-    setAccessReady(false);
     setActiveId(id);
     qc.removeQueries({ queryKey: getGetProjectQueryKey(id) });
-    setModal('access');
-    void logoutProjectAccess().then(() => setAccessReady(true)).catch(() => {
-      setAccessError('Не удалось завершить предыдущий сеанс. Обновите страницу и попробуйте снова.');
-    });
   };
-  const closeAccessPrompt = () => {
-    setModal(null);
-    if (accessGrantedId !== activeId) {
-      setActiveId(null);
-      setAccessGrantedId(null);
-    }
-  };
-  const submitProjectAccess = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!projectId || !accessReady || accessSubmitting) return;
-    setAccessSubmitting(true);
-    setAccessError('');
-    try {
-      await authenticateProject(projectId, { username: accessUsername.trim(), password: accessPassword });
-      setAccessGrantedId(projectId);
-      setAccessPassword('');
-      setModal(null);
-      await qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
-    } catch (error) {
-      const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined;
-      setAccessError(status === 429
-        ? 'Слишком много попыток. Попробуйте позже.'
-        : status === 401
-          ? 'Неверный логин или пароль.'
-          : 'Не удалось проверить доступ. Попробуйте ещё раз.');
-    } finally {
-      setAccessSubmitting(false);
-    }
-  };
-  const copyCurrent = (event: FormEvent) => {
-    event.preventDefault();
+  const copyCurrent = () => {
     if (!projectId) return;
-    if (copyUsername.trim().length < 3 || copyPassword.length < 8) return;
-    copyMutation.mutate({ projectId, data: { username: copyUsername.trim(), password: copyPassword } }, {
-      onSuccess: copied => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setAccessGrantedId(copied.id); setActiveId(copied.id); setDraft(copied); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); setCopyUsername(''); setCopyPassword(''); setModal(null); notify('Создана копия проекта'); },
+    copyMutation.mutate({ projectId }, {
+      onSuccess: copied => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(copied); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); notify('Создана копия проекта'); },
       onError: () => notify('Не удалось скопировать проект'),
     });
   };
   const removeProject = () => {
     if (!projectId || !window.confirm(`Удалить проект «${draft?.title ?? activeSummary?.title}»? Это действие нельзя отменить.`)) return;
     deleteMutation.mutate({ projectId }, {
-      onSuccess: () => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); initializedId.current = ''; setDraft(null); setAccessGrantedId(null); setActiveId(null); notify('Проект удалён'); },
+      onSuccess: () => { qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); initializedId.current = ''; setDraft(null); setActiveId(null); notify('Проект удалён'); },
       onError: () => notify('Не удалось удалить проект'),
     });
   };
@@ -805,7 +746,7 @@ function Planner() {
                  {portfolioOpen && <div role="listbox" aria-label="Проекты портфеля" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 min-w-[220px] overflow-y-auto overscroll-contain rounded-lg border border-[#ded9ce] bg-[#fbfaf5] p-1 shadow-xl">
                    {projects.map(item => <button key={item.id} type="button" role="option" aria-selected={item.id === activeId} data-testid={`button-open-project-${item.id}`} onClick={() => { setPortfolioOpen(false); openProject(item.id); }} className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-[10px] hover:bg-[#f1eee6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]">
                      <span className="min-w-0 truncate font-semibold">{item.title}</span>
-                     <span className="shrink-0 text-[9px] font-bold text-[#bd4c2b]">Войти</span>
+                      <span className="shrink-0 text-[9px] font-bold text-[#bd4c2b]">Открыть</span>
                    </button>)}
                  </div>}
                </div> : <button type="button" onClick={openNewProject} className="truncate text-left text-[10px] font-semibold text-[#bd4c2b] hover:underline">Добавить первый проект</button>}
@@ -818,7 +759,7 @@ function Planner() {
 
           <section className="min-w-0">
             {!projects.length ? <div className="panel flex min-h-[450px] flex-col items-center justify-center rounded-xl px-6 text-center"><div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#f0e7db] text-[#bd4c2b]"><Factory size={25} /></div><h2 className="display-font text-2xl">Начните с проекта</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Создайте план строительства — затем синхронизируйте этапы четырёх цехов, контрольные даты и подготовку команд.</p><button className="btn-primary mt-5 rounded-md px-4 py-2.5 text-sm font-bold" onClick={openNewProject}>Создать проект</button></div> :
-            !projectId ? <div className="panel flex min-h-[390px] flex-col items-center justify-center rounded-xl px-6 text-center"><h2 className="display-font text-xl">Выберите проект</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Откройте портфель проектов и нажмите «Войти» у нужного проекта. Запрос логина и пароля появится только после этого.</p></div> :
+            !projectId ? <div className="panel flex min-h-[390px] flex-col items-center justify-center rounded-xl px-6 text-center"><h2 className="display-font text-xl">Выберите проект</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-[#777b78]">Откройте нужный проект в портфеле, чтобы посмотреть и изменить его план.</p></div> :
             projectQuery.isLoading || !project ? <div className="panel min-h-[390px] animate-pulse rounded-xl p-6"><div className="h-7 w-64 rounded bg-[#e9e5db]" /><div className="mt-7 h-40 rounded-lg bg-[#f0ede5]" /><div className="mt-5 h-24 rounded-lg bg-[#f0ede5]" /></div> :
             <>
               {warningMessages.length > 0 && <div role="alert" className="mb-4 rounded-lg border border-[#e7c9ac] bg-[#fbf2e6] px-4 py-3 text-[11px] text-[#805c32]">
@@ -856,7 +797,7 @@ function Planner() {
                     <button data-testid="button-add-training" onClick={() => { setEditingTraining(null); setModal('training'); }} className="control inline-flex h-8 items-center gap-1.5 px-2.5 text-[11px] font-bold text-[#4b5959]"><Users size={13} />Обучение</button>
                     <button onClick={() => { void downloadRecruitmentWorkbook(project).catch(error => { console.error('Failed to build recruitment workbook', error); window.alert('Не удалось сформировать Excel-файл. Повторите попытку.'); }); }} className="btn-primary inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[10px] font-bold sm:text-[11px]"><FileSpreadsheet size={14} />Сформировать план набора персонала</button>
                     <button aria-label="Настройки расчёта" onClick={() => setModal('settings')} className="control flex h-8 w-8 items-center justify-center text-[#65716d]"><Settings2 size={14} /></button>
-                    <IconButton label="Копировать проект" onClick={() => { setCopyUsername(''); setCopyPassword(''); setModal('copy'); }}><Copy size={14} /></IconButton>
+                     <IconButton label="Копировать проект" onClick={copyCurrent}><Copy size={14} /></IconButton>
                     <IconButton label="Удалить проект" onClick={removeProject} danger><Trash2 size={14} /></IconButton>
                   </div>
                 </div>
@@ -1223,15 +1164,6 @@ function Planner() {
     </Modal>}
     {modal === 'new' && <Modal title="Новый проект" subtitle="Создайте основу плана для производственного объекта." onClose={() => setModal(null)} extraWide><form onSubmit={createProject} className="space-y-4 p-6">
       <Field label="Название проекта"><input autoFocus data-testid="input-new-project-title" value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Например, Модернизация установки № 2" className="control h-11 w-full px-3 text-sm" required /></Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Логин для входа в проект">
-          <input data-testid="input-new-project-username" autoComplete="username" value={newUsername} onChange={event => setNewUsername(event.target.value)} minLength={3} maxLength={64} placeholder="Не менее 3 символов" className="control h-10 w-full px-3 text-xs" required />
-        </Field>
-        <Field label="Пароль для входа в проект">
-          <input data-testid="input-new-project-password" type="password" autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} minLength={8} maxLength={128} placeholder="Не менее 8 символов" className="control h-10 w-full px-3 text-xs" required />
-        </Field>
-      </div>
-      <p className="-mt-2 text-[10px] text-[#85877e]">Пароль хранится в виде защищённого хеша. Запишите пару логин/пароль — восстановить пароль через приложение нельзя.</p>
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         <section className="min-w-0 rounded-md border border-[#e2ddd2] p-3">
           <div className="flex items-center gap-2"><span className="mono rounded bg-[#e7eee8] px-1.5 py-0.5 text-[9px] font-bold text-[#4e7066]">100%</span><h3 className="text-[10px] font-extrabold">Готовность персонала</h3></div>
@@ -1278,39 +1210,8 @@ function Planner() {
         <ShopMilestoneDateFields code="RFSU" title="Готовность к пуску" allDate={newRfsuAllDate} dates={newRfsuDates} onAllDateChange={date => setAllNewMilestoneDates('rfsu', date)} onShopDateChange={(shopId, date) => setNewShopMilestoneDate('rfsu', shopId, date)} />
       </div>
        <div className="rounded-md bg-[#f2efe7] p-3 text-[11px] leading-relaxed text-[#6f777e]">Для готовности персонала задайте общий срок или индивидуальные сроки по цехам. Для MC и RFSU укажите общую дату или отдельные даты по цехам. Будут созданы четыре площадки, базовые роли и стартовые этапы. Предзаполненные даты, этапы и численность ролей — шаблонные, их нужно проверить перед использованием.</div>
-       <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal('startup')} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Назад</button><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !startupAnswersComplete || !readyRuleComplete || !newMilestoneDatesComplete || !newReadyShopIds.length || newUsername.trim().length < 3 || newPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
+        <div className="flex justify-end gap-2"><button type="button" onClick={() => setModal('startup')} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Назад</button><button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button><button disabled={createMutation.isPending || !startupAnswersComplete || !readyRuleComplete || !newMilestoneDatesComplete || !newReadyShopIds.length} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{createMutation.isPending ? 'Создание…' : 'Создать проект'}</button></div>
     </form></Modal>}
-    {modal === 'access' && activeSummary && <Modal title={`Вход в проект «${activeSummary.title}»`} subtitle="Введите данные доступа, чтобы открыть план." onClose={closeAccessPrompt}>
-      <form onSubmit={event => void submitProjectAccess(event)} className="space-y-4 p-6">
-        <Field label="Логин">
-          <input data-testid="input-project-access-username" autoComplete="username" value={accessUsername} onChange={event => setAccessUsername(event.target.value)} minLength={3} maxLength={64} className="control h-10 w-full px-3 text-xs" required />
-        </Field>
-        <Field label="Пароль">
-          <input data-testid="input-project-access-password" type="password" autoComplete="current-password" value={accessPassword} onChange={event => setAccessPassword(event.target.value)} minLength={8} maxLength={128} className="control h-10 w-full px-3 text-xs" required />
-        </Field>
-        <p className="rounded-md bg-[#f2efe7] p-3 text-[10px] leading-relaxed text-[#6f777e]">Если для этого проекта ещё не настроен доступ, первая введённая пара станет логином и паролем. Для защищённого проекта введите существующую пару.</p>
-        {accessError && <p role="alert" className="text-xs font-semibold text-[#a84732]">{accessError}</p>}
-        {!accessReady && !accessError && <p className="text-xs text-[#777b78]">Завершение предыдущего сеанса…</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={closeAccessPrompt} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button>
-          <button disabled={!accessReady || accessSubmitting || accessUsername.trim().length < 3 || accessPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{accessSubmitting ? 'Проверка…' : 'Войти'}</button>
-        </div>
-      </form>
-    </Modal>}
-    {modal === 'copy' && project && <Modal title="Копировать проект" subtitle="Для копии задайте отдельную пару логин/пароль." onClose={() => setModal(null)}>
-      <form onSubmit={copyCurrent} className="space-y-4 p-6">
-        <Field label="Логин для копии">
-          <input data-testid="input-copy-project-username" autoComplete="username" value={copyUsername} onChange={event => setCopyUsername(event.target.value)} minLength={3} maxLength={64} className="control h-10 w-full px-3 text-xs" required />
-        </Field>
-        <Field label="Пароль для копии">
-          <input data-testid="input-copy-project-password" type="password" autoComplete="new-password" value={copyPassword} onChange={event => setCopyPassword(event.target.value)} minLength={8} maxLength={128} className="control h-10 w-full px-3 text-xs" required />
-        </Field>
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => setModal(null)} className="control h-9 px-4 text-xs font-bold text-[#68716e]">Отмена</button>
-          <button disabled={copyMutation.isPending || copyUsername.trim().length < 3 || copyPassword.length < 8} className="btn-primary h-9 rounded-md px-4 text-xs font-bold disabled:opacity-60">{copyMutation.isPending ? 'Копирование…' : 'Создать копию'}</button>
-        </div>
-      </form>
-    </Modal>}
     {modal === 'phase' && project && <PhaseModal phase={editingPhase} project={project} onClose={() => setModal(null)} onSave={phase => { const phases = editingPhase ? project.phases.map(p => p.id === phase.id ? phase : p) : [...project.phases, phase]; expandTimeline([phase.startDate, phase.endDate]); patch({ phases }); setModal(null); }} onDelete={() => { if (editingPhase && window.confirm('Удалить этот этап из плана?')) { patch({ phases: project.phases.filter(p => p.id !== editingPhase.id) }); setModal(null); } }} />}
     {modal === 'training' && project && <TrainingModal event={editingTraining} project={project} onClose={() => setModal(null)} onSave={event => { const training = editingTraining ? project.training.map(t => t.id === event.id ? event : t) : [...project.training, { ...event, sortOrder: project.training.length }]; patch({ training }); setModal(null); }} onDelete={() => { if (editingTraining && window.confirm('Удалить событие обучения?')) { patch({ training: project.training.filter(t => t.id !== editingTraining.id) }); setModal(null); } }} />}
     {modal === 'roles' && project && <RolesModal
