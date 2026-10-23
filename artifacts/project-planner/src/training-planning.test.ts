@@ -367,6 +367,60 @@ test('parallel working-day training calculates day and week ranges across weeken
 });
 
 for (const calculationMode of ['sequential', 'parallel'] as const) {
+  for (const startDate of ['2026-06-20', '2026-06-21']) {
+    test(`${calculationMode} working-day training preserves a manual start on ${startDate}`, () => {
+      const trainingProject = project(calculationMode);
+      trainingProject.settings.dayType = 'working';
+      trainingProject.training = [
+        training('pinned', 'Обучение с датой', 2, [shopId], [roleA.id], 0, 'days', startDate),
+      ];
+
+      const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, null);
+
+      assert.deepEqual(
+        plan.schedule.map(({ startDate: scheduledStart, endDate, durationDays }) => ({
+          startDate: scheduledStart,
+          endDate,
+          durationDays,
+        })),
+        [{ startDate, endDate: '2026-06-23', durationDays: 2 }],
+      );
+    });
+  }
+}
+
+for (const calculationMode of ['sequential', 'parallel'] as const) {
+  for (const readyDate of ['2026-06-20', '2026-06-21']) {
+    test(`${calculationMode} working-day training keeps a fixed weekend ready date of ${readyDate}`, () => {
+      const trainingProject = project(calculationMode);
+      trainingProject.settings.dayType = 'working';
+      trainingProject.training = [
+        training('short', 'Короткое обучение', 2, [shopId], [roleA.id], 0),
+        training('long', 'Длинное обучение', 3, [shopId], [roleA.id], 1),
+      ];
+
+      const plan = getRoleTrainingPlan(trainingProject, shopId, roleA.id, readyDate);
+      const expectedSchedule = calculationMode === 'sequential'
+        ? [
+            { id: 'short', startDate: '2026-06-15', endDate: '2026-06-17' },
+            { id: 'long', startDate: '2026-06-17', endDate: readyDate },
+          ]
+        : [
+            { id: 'short', startDate: '2026-06-18', endDate: readyDate },
+            { id: 'long', startDate: '2026-06-17', endDate: readyDate },
+          ];
+
+      assert.deepEqual(
+        plan.schedule.map(({ event, startDate, endDate }) => ({ id: event.id, startDate, endDate })),
+        expectedSchedule,
+      );
+      assert.equal(plan.endDate, readyDate);
+      assert.equal(plan.readyDate, readyDate);
+    });
+  }
+}
+
+for (const calculationMode of ['sequential', 'parallel'] as const) {
   test(`recruitment export matches the ${calculationMode} working-day role plan`, async () => {
     const trainingProject = project(calculationMode);
     trainingProject.settings.dayType = 'working';
