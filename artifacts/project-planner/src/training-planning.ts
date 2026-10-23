@@ -17,6 +17,7 @@ export type ShopRoleSummary = {
   itr: Role[];
   workers: Role[];
   count: number;
+  headcount: number;
 };
 
 export type RoleTrainingPlan = {
@@ -40,6 +41,7 @@ export function getShopRoleSummary(shop: Shop): ShopRoleSummary {
     itr: activeRoles.filter(role => role.group === 'itr'),
     workers: activeRoles.filter(role => role.group === 'workers'),
     count: activeRoles.length,
+    headcount: activeRoles.reduce((sum, role) => sum + (role.headcount ?? 1), 0),
   };
 }
 

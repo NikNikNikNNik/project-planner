@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
 import { assignTrainingLanes, durationInDays, getOnboardingStartDate, getRoleTrainingPlan, getShopContractDate, getShopRoleSummary, reconcileTrainingRoles, scheduleTrainingTimeline } from './training-planning.ts';
+
+test('shop summary distinguishes number of roles from number of people', () => {
+  const summary = getShopRoleSummary({ id: 'staff', name: 'Цех', roles: [
+    { id: 'grade6', name: 'Аппаратчик · 6-й разряд', group: 'workers', visible: true, headcount: 20 },
+    { id: 'grade5', name: 'Аппаратчик · 5-й разряд', group: 'workers', visible: true, headcount: 34 },
+    { id: 'excluded', name: 'Не в плане', group: 'itr', visible: false, headcount: 5 },
+  ] });
+  assert.equal(summary.count, 2);
+  assert.equal(summary.headcount, 54);
+});
 import { createRecruitmentWorkbook } from './recruitment-export.ts';
 
 const shopId = 'shop-a';

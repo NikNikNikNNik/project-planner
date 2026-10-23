@@ -38,6 +38,10 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem)
 
 export const createProjectBodyShopsItemRolesItemHeadcountMin = 0;
 
+export const createProjectBodyShopsItemRolesItemMonthlyPayrollKztMin = 0;
+
+export const createProjectBodyShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
+
 export const createProjectBodyTrainingItemDurationMin = 0;
 
 export const createProjectBodyTrainingItemCostUsdMin = 0;
@@ -73,7 +77,9 @@ export const CreateProjectBody = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(createProjectBodyShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(createProjectBodyShopsItemRolesItemHeadcountMin).optional(),
+  "monthlyPayrollKzt": zod.number().min(createProjectBodyShopsItemRolesItemMonthlyPayrollKztMin).optional().describe('Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.'),
+  "monthlyPayrollNote": zod.string().max(createProjectBodyShopsItemRolesItemMonthlyPayrollNoteMax).optional().describe('Optional provenance and assumptions for an estimated monthly payroll.')
 }))
 })),
   "phases": zod.array(zod.object({
@@ -150,6 +156,10 @@ export const CreateProjectBody = zod.object({
 
 export const createProjectResponseShopsItemRolesItemHeadcountMin = 0;
 
+export const createProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
+
+export const createProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
+
 export const createProjectResponseTrainingItemDurationMin = 0;
 
 export const createProjectResponseTrainingItemCostUsdMin = 0;
@@ -187,7 +197,9 @@ export const CreateProjectResponse = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(createProjectResponseShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(createProjectResponseShopsItemRolesItemHeadcountMin).optional(),
+  "monthlyPayrollKzt": zod.number().min(createProjectResponseShopsItemRolesItemMonthlyPayrollKztMin).optional().describe('Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.'),
+  "monthlyPayrollNote": zod.string().max(createProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax).optional().describe('Optional provenance and assumptions for an estimated monthly payroll.')
 }))
 })),
   "phases": zod.array(zod.object({
@@ -272,6 +284,10 @@ export const GetProjectParams = zod.object({
 
 export const getProjectResponseShopsItemRolesItemHeadcountMin = 0;
 
+export const getProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
+
+export const getProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
+
 export const getProjectResponseTrainingItemDurationMin = 0;
 
 export const getProjectResponseTrainingItemCostUsdMin = 0;
@@ -309,7 +325,9 @@ export const GetProjectResponse = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(getProjectResponseShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(getProjectResponseShopsItemRolesItemHeadcountMin).optional(),
+  "monthlyPayrollKzt": zod.number().min(getProjectResponseShopsItemRolesItemMonthlyPayrollKztMin).optional().describe('Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.'),
+  "monthlyPayrollNote": zod.string().max(getProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax).optional().describe('Optional provenance and assumptions for an estimated monthly payroll.')
 }))
 })),
   "phases": zod.array(zod.object({
@@ -394,6 +412,10 @@ export const UpdateProjectParams = zod.object({
 
 export const updateProjectBodyShopsItemRolesItemHeadcountMin = 0;
 
+export const updateProjectBodyShopsItemRolesItemMonthlyPayrollKztMin = 0;
+
+export const updateProjectBodyShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
+
 export const updateProjectBodyTrainingItemDurationMin = 0;
 
 export const updateProjectBodyTrainingItemCostUsdMin = 0;
@@ -429,7 +451,9 @@ export const UpdateProjectBody = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(updateProjectBodyShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(updateProjectBodyShopsItemRolesItemHeadcountMin).optional(),
+  "monthlyPayrollKzt": zod.number().min(updateProjectBodyShopsItemRolesItemMonthlyPayrollKztMin).optional().describe('Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.'),
+  "monthlyPayrollNote": zod.string().max(updateProjectBodyShopsItemRolesItemMonthlyPayrollNoteMax).optional().describe('Optional provenance and assumptions for an estimated monthly payroll.')
 }))
 })),
   "phases": zod.array(zod.object({
@@ -506,6 +530,10 @@ export const UpdateProjectBody = zod.object({
 
 export const updateProjectResponseShopsItemRolesItemHeadcountMin = 0;
 
+export const updateProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
+
+export const updateProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
+
 export const updateProjectResponseTrainingItemDurationMin = 0;
 
 export const updateProjectResponseTrainingItemCostUsdMin = 0;
@@ -543,7 +571,9 @@ export const UpdateProjectResponse = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(updateProjectResponseShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(updateProjectResponseShopsItemRolesItemHeadcountMin).optional(),
+  "monthlyPayrollKzt": zod.number().min(updateProjectResponseShopsItemRolesItemMonthlyPayrollKztMin).optional().describe('Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.'),
+  "monthlyPayrollNote": zod.string().max(updateProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax).optional().describe('Optional provenance and assumptions for an estimated monthly payroll.')
 }))
 })),
   "phases": zod.array(zod.object({
@@ -638,6 +668,10 @@ export const CopyProjectParams = zod.object({
 
 export const copyProjectResponseShopsItemRolesItemHeadcountMin = 0;
 
+export const copyProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
+
+export const copyProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
+
 export const copyProjectResponseTrainingItemDurationMin = 0;
 
 export const copyProjectResponseTrainingItemCostUsdMin = 0;
@@ -675,7 +709,9 @@ export const CopyProjectResponse = zod.object({
   "name": zod.string(),
   "group": zod.enum(['itr', 'workers']),
   "visible": zod.boolean(),
-  "headcount": zod.number().int().min(copyProjectResponseShopsItemRolesItemHeadcountMin).optional()
+  "headcount": zod.number().int().min(copyProjectResponseShopsItemRolesItemHeadcountMin).optional(),
+  "monthlyPayrollKzt": zod.number().min(copyProjectResponseShopsItemRolesItemMonthlyPayrollKztMin).optional().describe('Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.'),
+  "monthlyPayrollNote": zod.string().max(copyProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax).optional().describe('Optional provenance and assumptions for an estimated monthly payroll.')
 }))
 })),
   "phases": zod.array(zod.object({

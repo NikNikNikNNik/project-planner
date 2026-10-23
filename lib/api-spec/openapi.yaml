@@ -164,6 +164,14 @@ components:
         group: { type: string, enum: [itr, workers] }
         visible: { type: boolean }
         headcount: { type: integer, minimum: 0 }
+        monthlyPayrollKzt:
+          type: number
+          minimum: 0
+          description: Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.
+        monthlyPayrollNote:
+          type: string
+          maxLength: 4000
+          description: Optional provenance and assumptions for an estimated monthly payroll.
     Shop:
       type: object
       required: [id, name, roles]

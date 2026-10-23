@@ -14,4 +14,14 @@ export interface Role {
   visible: boolean;
   /** @minimum 0 */
   headcount?: number;
+  /**
+     * Monthly payroll per person in KZT, before employee taxes; excludes additional employer charges.
+     * @minimum 0
+     */
+  monthlyPayrollKzt?: number;
+  /**
+     * Optional provenance and assumptions for an estimated monthly payroll.
+     * @maxLength 4000
+     */
+  monthlyPayrollNote?: string;
 }
