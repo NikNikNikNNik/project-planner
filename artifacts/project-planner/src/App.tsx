@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
@@ -47,6 +47,7 @@ import {
   withMilestoneShopDate,
 } from './readiness';
 import { getProjectTimelineEnd, getShopTimelinePhases, REGIME_RAMP_UP_DAYS } from './timeline-phases';
+import { isTimelineInteractiveTarget } from './timeline-interactions';
 import {
   Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, FileSpreadsheet,
   ChevronDown, ChevronRight, CircleHelp, Copy, Factory, Flag,
@@ -275,6 +276,7 @@ function Planner() {
   const initializedId = useRef('');
   const savedJson = useRef('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ x: number; start: string; end: string; span: number } | null>(null);
   const phaseDragRef = useRef<{ id: string; x: number; start: string; end: string; span: number; mode: 'move' | 'start' | 'end' } | null>(null);
   const phaseMovedRef = useRef(false);
@@ -700,8 +702,9 @@ function Planner() {
       phases: current.phases.map(item => item.id === drag.id ? { ...item, startDate, endDate } : item),
     } : current);
   };
-  const handleTimelineWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!project) return;
+  const handleTimelineWheel = (event: WheelEvent) => {
+    const timeline = timelineRef.current;
+    if (!project || !timeline) return;
     event.preventDefault();
     const start = timelineStart || project.startDate;
     const end = timelineEnd || project.endDate;
@@ -711,13 +714,13 @@ function Planner() {
       setTimelineEnd(shiftDate(end, shift));
       return;
     }
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = timeline.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     zoomTimelineAt(zoom * (event.deltaY > 0 ? 0.92 : 1.08), ratio);
   };
   const handleTimelinePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!project || event.pointerType !== 'mouse' || event.button !== 0) return;
-    if (event.target instanceof HTMLElement && event.target.closest('button, input, select')) return;
+    if (isTimelineInteractiveTarget(event.target)) return;
     dragRef.current = {
       x: event.clientX,
       start: timelineStart || project.startDate,
@@ -733,6 +736,13 @@ function Planner() {
     setTimelineStart(shiftDate(dragRef.current.start, days));
     setTimelineEnd(shiftDate(dragRef.current.end, days));
   };
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+    // React's delegated wheel listener is passive and cannot cancel page scrolling.
+    timeline.addEventListener('wheel', handleTimelineWheel, { passive: false });
+    return () => timeline.removeEventListener('wheel', handleTimelineWheel);
+  }, [project, timelineStart, timelineEnd, zoom]);
   const retrySave = () => {
     if (!project) return;
     setSaveState('saving');
@@ -880,8 +890,8 @@ function Planner() {
                 </div>
                 {project.phases.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#f1e9de] text-[#bd4c2b]"><Flag size={17} /></div><div className="text-sm font-bold">В плане пока нет этапов</div><p className="mt-1 text-xs text-[#85877e]">Добавьте этап строительства или пусконаладки.</p><button onClick={() => { setEditingPhase(null); setModal('phase'); }} className="mt-3 text-xs font-bold text-[#b84628]">Добавить этап</button></div> :
                 <div
+                  ref={timelineRef}
                   className="overflow-x-auto cursor-grab active:cursor-grabbing"
-                  onWheel={handleTimelineWheel}
                   onPointerDown={handleTimelinePointerDown}
                   onPointerMove={handleTimelinePointerMove}
                   onPointerUp={() => { dragRef.current = null; }}
