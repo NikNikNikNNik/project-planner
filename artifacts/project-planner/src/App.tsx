@@ -59,6 +59,12 @@ import { getProjectTimelineEnd, getShopTimelinePhases, REGIME_RAMP_UP_DAYS } fro
 import { isTimelineInteractiveTarget } from './timeline-interactions';
 import { parseProjectBackup, serializeProjectBackup } from './project-backup';
 import {
+  getSaveErrorMessage,
+  parseSaveRecoverySnapshot,
+  serializeProjectSnapshot,
+  shouldRestoreSaveRecovery,
+} from './save-recovery';
+import {
   Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, Download, FileSpreadsheet,
   ChevronDown, ChevronRight, CircleHelp, Copy, Factory, Flag,
   Pencil, Plus, Save, Settings2, SlidersHorizontal, Upload,
@@ -124,6 +130,26 @@ const defaultShopOptions = [
   { id: 'shop-3', name: 'Полимеризация' },
   { id: 'shop-4', name: 'ОЗХ' },
 ] as const;
+
+const saveRecoveryKey = (projectId: string) => `project-planner:pending-save:${projectId}`;
+function writeSaveRecovery(projectId: string, baseUpdatedAt: string, project: Project): void {
+  try {
+    window.sessionStorage.setItem(saveRecoveryKey(projectId), JSON.stringify({
+      version: 1,
+      baseUpdatedAt,
+      project,
+    }));
+  } catch {
+    // The live draft remains available even if browser storage is full or disabled.
+  }
+}
+function clearSaveRecovery(projectId: string): void {
+  try {
+    window.sessionStorage.removeItem(saveRecoveryKey(projectId));
+  } catch {
+    // Storage may be unavailable in private browsing contexts.
+  }
+}
 
 type WorkforceMode = 'shift' | 'local';
 type OnboardingUnit = 'days' | 'weeks';
@@ -262,6 +288,7 @@ function Planner() {
   const updateMutation = useUpdateProject();
   const [draft, setDraft] = useState<Project | null>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [saveError, setSaveError] = useState('');
   const [modal, setModal] = useState<'startup' | 'new' | 'phase' | 'training' | 'roles' | 'settings' | null>(null);
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null);
   const [editingTraining, setEditingTraining] = useState<TrainingEvent | null>(null);
@@ -297,6 +324,10 @@ function Planner() {
   const [toast, setToast] = useState('');
   const initializedId = useRef('');
   const savedJson = useRef('');
+  const savedUpdatedAt = useRef('');
+  const latestDraft = useRef<Project | null>(null);
+  const saveInFlight = useRef(false);
+  const performSaveRef = useRef<() => void>(() => {});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const projectImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -304,12 +335,96 @@ function Planner() {
   const phaseDragRef = useRef<{ id: string; x: number; start: string; end: string; span: number; mode: 'move' | 'start' | 'end' } | null>(null);
   const phaseMovedRef = useRef(false);
 
+  latestDraft.current = draft;
+
+  const performSave = () => {
+    const snapshot = latestDraft.current;
+    if (!snapshot || snapshot.id !== projectId || initializedId.current !== projectId || saveInFlight.current) return;
+    const baseline = savedJson.current
+      ? serializeProjectSnapshot(JSON.parse(savedJson.current) as Project)
+      : '';
+    const snapshotJson = serializeProjectSnapshot(snapshot);
+    if (!baseline || snapshotJson === baseline) {
+      setSaveState('saved');
+      setSaveError('');
+      clearSaveRecovery(snapshot.id);
+      return;
+    }
+
+    const input: ProjectInput = {
+      title: snapshot.title,
+      startDate: snapshot.startDate,
+      endDate: snapshot.endDate,
+      shops: snapshot.shops,
+      phases: snapshot.phases,
+      milestones: snapshot.milestones,
+      training: snapshot.training,
+      settings: snapshot.settings,
+    };
+    saveInFlight.current = true;
+    setSaveState('saving');
+    setSaveError('');
+    updateMutation.mutate({ projectId: snapshot.id, data: input }, {
+      onSuccess: updated => {
+        savedJson.current = JSON.stringify(updated);
+        savedUpdatedAt.current = updated.updatedAt;
+        qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
+
+        const newestDraft = latestDraft.current;
+        if (newestDraft?.id === updated.id &&
+          serializeProjectSnapshot(newestDraft) === serializeProjectSnapshot(updated)) {
+          clearSaveRecovery(updated.id);
+          setSaveState('saved');
+          setSaveError('');
+        } else if (newestDraft?.id === updated.id) {
+          writeSaveRecovery(updated.id, updated.updatedAt, newestDraft);
+        }
+      },
+      onError: error => {
+        const newestDraft = latestDraft.current;
+        if (newestDraft?.id === snapshot.id) {
+          writeSaveRecovery(snapshot.id, savedUpdatedAt.current, newestDraft);
+        }
+        setSaveState('error');
+        setSaveError(getSaveErrorMessage(error));
+      },
+      onSettled: () => {
+        saveInFlight.current = false;
+        const newestDraft = latestDraft.current;
+        if (newestDraft?.id === snapshot.id &&
+          serializeProjectSnapshot(newestDraft) !== snapshotJson) {
+          setSaveState('saving');
+          window.setTimeout(() => performSaveRef.current(), 0);
+        }
+      },
+    });
+  };
+  performSaveRef.current = performSave;
+
   useEffect(() => {
     const data = projectQuery.data;
     if (data && data.id !== initializedId.current) {
       initializedId.current = data.id;
-      setDraft(sequentialProject(data));
       savedJson.current = JSON.stringify(data);
+      savedUpdatedAt.current = data.updatedAt;
+      let nextDraft = sequentialProject(data);
+      try {
+        const stored = window.sessionStorage.getItem(saveRecoveryKey(data.id));
+        const recovery = stored ? parseSaveRecoverySnapshot<Project>(stored) : null;
+        if (recovery) {
+          if (shouldRestoreSaveRecovery(recovery, data) ||
+            window.confirm('Найден черновик с несохранёнными изменениями. Восстановить его поверх текущего проекта?')) {
+            nextDraft = sequentialProject(recovery.project);
+            setToast('Восстановлен локальный черновик. Проверьте и сохраните изменения.');
+          } else {
+            clearSaveRecovery(data.id);
+          }
+        }
+      } catch {
+        // Keep the server version if browser storage cannot be read.
+      }
+      setDraft(nextDraft);
       setTimelineStart(data.startDate);
       setTimelineEnd(getProjectTimelineEnd(data));
       setExpandedShopIds([]);
@@ -320,29 +435,34 @@ function Planner() {
   }, [projectQuery.data]);
   useEffect(() => {
     if (!draft || draft.id !== projectId || initializedId.current !== projectId) return;
-    const serialized = JSON.stringify({ ...draft, updatedAt: undefined });
-    const saved = JSON.stringify({ ...JSON.parse(savedJson.current || '{}'), updatedAt: undefined });
-    if (!savedJson.current || serialized === saved) return;
+    const serialized = serializeProjectSnapshot(draft);
+    const saved = savedJson.current
+      ? serializeProjectSnapshot(JSON.parse(savedJson.current) as Project)
+      : '';
+    if (!savedJson.current || serialized === saved) {
+      if (serialized === saved) {
+        setSaveState('saved');
+        setSaveError('');
+        clearSaveRecovery(draft.id);
+      }
+      return;
+    }
     setSaveState('saving');
+    writeSaveRecovery(draft.id, savedUpdatedAt.current, draft);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const input: ProjectInput = {
-        title: draft.title, startDate: draft.startDate, endDate: draft.endDate,
-        shops: draft.shops, phases: draft.phases, milestones: draft.milestones,
-        training: draft.training, settings: draft.settings,
-      };
-      updateMutation.mutate({ projectId: draft.id, data: input }, {
-        onSuccess: updated => {
-          savedJson.current = JSON.stringify(updated);
-          setSaveState('saved');
-          qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-          qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
-        },
-        onError: () => setSaveState('error'),
-      });
-    }, 700);
+    timer.current = setTimeout(() => performSaveRef.current(), 700);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [draft, projectId]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (saveState === 'saved') return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveState]);
 
   const patch = (changes: Partial<Project>) => setDraft(current => {
     if (!current) return current;
@@ -367,6 +487,7 @@ function Planner() {
     setDraft(normalizedProject);
     initializedId.current = created.id;
     savedJson.current = JSON.stringify(created);
+    savedUpdatedAt.current = created.updatedAt;
     setShowTimelinePhases(true);
     setTrainingTimelineCollapsed(true);
     setModal(null);
@@ -522,6 +643,16 @@ function Planner() {
     });
   };
   const openProject = (id: string) => {
+    if (id === activeId) {
+      setPortfolioOpen(false);
+      return;
+    }
+    if (project && saveState !== 'saved') {
+      notify(saveState === 'error'
+        ? 'Сначала повторите сохранение или дождитесь сохранения правок.'
+        : 'Дождитесь завершения сохранения перед переключением проекта.');
+      return;
+    }
     if (timer.current) clearTimeout(timer.current);
     initializedId.current = '';
     setDraft(null);
@@ -531,6 +662,10 @@ function Planner() {
   };
   const copyCurrent = () => {
     if (!projectId) return;
+    if (project && saveState !== 'saved') {
+      notify('Сначала сохраните текущие изменения, затем копируйте проект.');
+      return;
+    }
     copyMutation.mutate({ projectId }, {
       onSuccess: copied => { const normalizedCopy = sequentialProject(copied); qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }); qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() }); setActiveId(copied.id); setDraft(normalizedCopy); initializedId.current = copied.id; savedJson.current = JSON.stringify(copied); setShowTimelinePhases(true); notify('Создана копия проекта'); },
       onError: () => notify('Не удалось скопировать проект'),
@@ -819,26 +954,7 @@ function Planner() {
     timeline.addEventListener('wheel', handleTimelineWheel, { passive: false });
     return () => timeline.removeEventListener('wheel', handleTimelineWheel);
   }, [project, timelineStart, timelineEnd, zoom]);
-  const retrySave = () => {
-    if (!project) return;
-    setSaveState('saving');
-    updateMutation.mutate({
-      projectId: project.id,
-      data: {
-        title: project.title, startDate: project.startDate, endDate: project.endDate,
-        shops: project.shops, phases: project.phases, milestones: project.milestones,
-        training: project.training, settings: project.settings,
-      },
-    }, {
-      onSuccess: updated => {
-        savedJson.current = JSON.stringify(updated);
-        setSaveState('saved');
-        qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-        qc.invalidateQueries({ queryKey: getGetPlanningSummaryQueryKey() });
-      },
-      onError: () => setSaveState('error'),
-    });
-  };
+  const retrySave = () => performSaveRef.current();
 
   if (projectsQuery.isLoading) return <main className="min-h-[100dvh] bg-[#f5f2e9] p-8"><div className="h-10 w-72 animate-pulse rounded bg-[#e7e2d7]" /><div className="mt-8 h-64 animate-pulse rounded-xl bg-[#ebe7dd]" /></main>;
   if (projectsQuery.isError) return <main className="flex min-h-[100dvh] items-center justify-center bg-[#f5f2e9]"><div className="panel max-w-md rounded-xl p-8 text-center"><AlertTriangle className="mx-auto mb-3 text-[#bd4c2b]" /><h1 className="display-font text-xl">Не удалось загрузить портфель</h1><p className="mt-2 text-sm text-[#6d7475]">Проверьте соединение с сервером и попробуйте ещё раз.</p><button className="btn-primary mt-5 rounded-md px-4 py-2 text-sm font-bold" onClick={() => projectsQuery.refetch()}>Повторить</button></div></main>;
