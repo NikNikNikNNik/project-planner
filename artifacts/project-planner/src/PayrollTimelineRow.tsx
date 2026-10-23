@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as HoverCard from '@radix-ui/react-hover-card';
 import { Download } from 'lucide-react';
 import type { Project } from '@workspace/api-client-react';
+import { CollapsibleTimelineRow } from './CollapsibleTimelineRow';
 import {
   formatKzt,
   getCumulativePayrollKzt,
@@ -124,7 +125,9 @@ export function PayrollTimelineRow({ project, start, end }: { project: Project; 
   const [trackWidth, setTrackWidth] = useState(576);
   useEffect(() => {
     if (!track.current) return;
-    const observer = new ResizeObserver(([entry]) => setTrackWidth(entry.contentRect.width));
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) setTrackWidth(entry.contentRect.width);
+    });
     observer.observe(track.current);
     return () => observer.disconnect();
   }, []);
@@ -165,7 +168,9 @@ export function PayrollMonthlyTimelineRow({ project, start, end }: { project: Pr
   const [trackWidth, setTrackWidth] = useState(576);
   useEffect(() => {
     if (!track.current) return;
-    const observer = new ResizeObserver(([entry]) => setTrackWidth(entry.contentRect.width));
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) setTrackWidth(entry.contentRect.width);
+    });
     observer.observe(track.current);
     return () => observer.disconnect();
   }, []);
@@ -186,25 +191,33 @@ export function PayrollMonthlyTimelineRow({ project, start, end }: { project: Pr
   });
   const rowHeight = Math.max(46, (laneEnds.length + 1) * 15 + 4);
   const unknownTotal = summary.partial && summary.entries.length === 0;
-  return <div data-testid="payroll-monthly-timeline-row" className="border-b border-[#d9dfea] bg-[#edf1f7]" role="group" aria-label="ФОТ, в помесячном выражении">
-    <div className="flex">
-      <div className="sticky left-0 z-20 flex w-[184px] shrink-0 flex-col justify-center bg-[#edf1f7] px-4 py-2 text-[10px] font-bold text-[#455a7d]">
-        <span>ФОТ, в помесячном выражении</span>
-        <span className="mt-0.5 text-[9px] font-normal">по всему проекту · ₸{summary.partial ? ' · неполный' : ''}</span>
-      </div>
-      <div ref={track} className="timeline-grid relative min-w-0 flex-1 overflow-hidden" style={{ height: `${rowHeight}px` }}>
-        {points.map(({ date, amount, left, lane }) => {
-          const x = left > 95 ? 'translateX(-100%)' : left < 5 ? undefined : 'translateX(-50%)';
-          return <div key={date} className="absolute" style={{ left: `${left}%`, top: `${4 + lane * 15}px`, transform: x }}>
-            <PayrollPoint project={project} date={date} kind="monthly" left={left}
-              label={unknownTotal ? 'нет данных для расчёта' : formatKzt(amount)}>
-              <div className="rounded px-0.5 text-[8px] font-bold tabular-nums text-[#455a7d]">
-                {unknownTotal ? '—' : `${summary.partial ? '≥ ' : ''}${compact.format(amount)}`}
-              </div>
-            </PayrollPoint>
-          </div>;
-        })}
+  return <CollapsibleTimelineRow
+    title="ФОТ, в помесячном выражении"
+    tone="payroll"
+    projectId={project.id}
+    testId="payroll-monthly-collapsible"
+    contentId="payroll-monthly-chart"
+  >
+    <div data-testid="payroll-monthly-timeline-row" className="border-b border-[#d9dfea] bg-[#edf1f7]" role="group" aria-label="ФОТ, в помесячном выражении">
+      <div className="flex">
+        <div className="sticky left-0 z-20 flex w-[184px] shrink-0 flex-col justify-center bg-[#edf1f7] px-4 py-2 text-[10px] font-bold text-[#455a7d]">
+          <span>по всему проекту</span>
+          <span className="mt-0.5 text-[9px] font-normal">₸{summary.partial ? ' · неполный' : ''}</span>
+        </div>
+        <div ref={track} className="timeline-grid relative min-w-0 flex-1 overflow-hidden" style={{ height: `${rowHeight}px` }}>
+          {points.map(({ date, amount, left, lane }) => {
+            const x = left > 95 ? 'translateX(-100%)' : left < 5 ? undefined : 'translateX(-50%)';
+            return <div key={date} className="absolute" style={{ left: `${left}%`, top: `${4 + lane * 15}px`, transform: x }}>
+              <PayrollPoint project={project} date={date} kind="monthly" left={left}
+                label={unknownTotal ? 'нет данных для расчёта' : formatKzt(amount)}>
+                <div className="rounded px-0.5 text-[8px] font-bold tabular-nums text-[#455a7d]">
+                  {unknownTotal ? '—' : `${summary.partial ? '≥ ' : ''}${compact.format(amount)}`}
+                </div>
+              </PayrollPoint>
+            </div>;
+          })}
+        </div>
       </div>
     </div>
-  </div>;
+  </CollapsibleTimelineRow>;
 }

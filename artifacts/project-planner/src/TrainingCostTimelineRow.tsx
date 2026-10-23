@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as HoverCard from '@radix-ui/react-hover-card';
 import { Download } from 'lucide-react';
 import type { Project } from '@workspace/api-client-react';
+import { CollapsibleTimelineRow } from './CollapsibleTimelineRow';
 import { formatKzt } from './payroll';
 import {
   getTrainingCostReport,
@@ -124,7 +125,9 @@ export function TrainingCostTimelineRow({
   const [trackWidth, setTrackWidth] = useState(576);
   useEffect(() => {
     if (!track.current) return;
-    const observer = new ResizeObserver(([entry]) => setTrackWidth(entry.contentRect.width));
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) setTrackWidth(entry.contentRect.width);
+    });
     observer.observe(track.current);
     return () => observer.disconnect();
   }, []);
@@ -159,11 +162,10 @@ export function TrainingCostTimelineRow({
   const unknownTotal = positionedPoints.length > 0
     && positionedPoints.every(({ report }) => report.partial && report.totalKzt === 0 && report.lines.length === 0);
 
-  return <div data-testid={dataTestId} className={`border-b ${monthly ? 'border-[#e1d9e9] bg-[#f4f0f8]' : 'border-[#eadbce] bg-[#fbf1e9]'}`} role="group" aria-label={label}>
+  const chart = <div data-testid={dataTestId} className={`border-b ${monthly ? 'border-[#e1d9e9] bg-[#f4f0f8]' : 'border-[#eadbce] bg-[#fbf1e9]'}`} role="group" aria-label={label}>
     <div className="flex">
       <div className={`sticky left-0 z-20 flex w-[184px] shrink-0 flex-col justify-center px-4 py-2 text-[10px] font-bold ${monthly ? 'bg-[#f4f0f8] text-[#725687]' : 'bg-[#fbf1e9] text-[#8a4e2d]'}`}>
-        <span>{label}</span>
-        <span className="mt-0.5 text-[9px] font-normal">по всему проекту · ₸</span>
+        <span>по всему проекту · ₸</span>
       </div>
       <div ref={track} className="timeline-grid relative min-w-0 flex-1 overflow-hidden" style={{ height: `${rowHeight}px` }}>
         {positionedPoints.map(({ date, report, left, lane }) => {
@@ -182,4 +184,15 @@ export function TrainingCostTimelineRow({
       </div>
     </div>
   </div>;
+
+  if (!monthly) return chart;
+  return <CollapsibleTimelineRow
+    title={label}
+    tone="training"
+    projectId={project.id}
+    testId="training-cost-monthly-collapsible"
+    contentId="training-cost-monthly-chart"
+  >
+    {chart}
+  </CollapsibleTimelineRow>;
 }
