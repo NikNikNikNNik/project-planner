@@ -264,3 +264,44 @@ test('internship Excel export shows scaled cost and the ten-person group basis',
   assert.equal(sheet.getCell('E7').value, '461 чел. / 47 групп по 10 (округлено вверх)');
   assert.equal(sheet.getCell('F7').value, 50_000_000);
 });
+
+test('training costs and scheduled dates exclude an audience whose role is unchecked', () => {
+  const project = fixture();
+  project.shops = [{
+    id: 'shop',
+    name: 'Цех',
+    roles: [
+      { id: 'active-role', name: 'Оператор', group: 'workers', visible: true, headcount: 1 },
+      { id: 'excluded-role', name: 'Механик', group: 'workers', visible: false, headcount: 3 },
+    ],
+  }];
+  project.training = [{
+    id: 'excluded-course',
+    title: 'Курс для исключённой роли',
+    category: 'technology',
+    duration: 5,
+    unit: 'days',
+    startDate: '2026-02-01',
+    shopIds: ['shop'],
+    roleIds: ['excluded-role'],
+    costUsd: 12_000,
+    note: null,
+    status: 'planned',
+    sortOrder: 0,
+  }];
+
+  const [entry] = getTrainingCostEntries(project, []);
+  assert.equal(entry.totalCostKzt, 0);
+  assert.equal(entry.startDate, null);
+  assert.deepEqual(entry.activeDates, []);
+});
+
+test('an excluded shop has no internship participants or group costs', () => {
+  const project = internshipFixture(11);
+  project.shops.forEach(shop => { shop.includedInCalculations = false; });
+
+  const [entry] = getTrainingCostEntries(project, []);
+  assert.equal(entry.internshipCostBasis?.participantCount, 0);
+  assert.equal(entry.internshipCostBasis?.groupCount, 0);
+  assert.equal(entry.totalCostKzt, 0);
+});

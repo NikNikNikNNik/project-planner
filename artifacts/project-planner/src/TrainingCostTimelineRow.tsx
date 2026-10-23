@@ -3,6 +3,7 @@ import * as HoverCard from '@radix-ui/react-hover-card';
 import { Download } from 'lucide-react';
 import type { Project } from '@workspace/api-client-react';
 import { CollapsibleTimelineRow } from './CollapsibleTimelineRow';
+import { getReadableTimelineLabelIndexes } from './timeline-labels';
 import { formatKzt } from './payroll';
 import {
   getTrainingCostReport,
@@ -145,18 +146,22 @@ export function TrainingCostTimelineRow({
   const visiblePoints = !monthly && points.length > capacity
     ? Array.from({ length: capacity }, (_, index) => points[Math.round(index * (points.length - 1) / (capacity - 1))])
     : points;
-  const labelWidth = monthly ? 64 : 82;
+  const labelWidth = monthly ? 76 : 82;
+  const labelIndexes = monthly
+    ? getReadableTimelineLabelIndexes(visiblePoints.length, trackWidth, labelWidth)
+    : new Set(visiblePoints.map((_, index) => index));
   const laneEnds: number[] = [];
-  const positionedPoints = visiblePoints.map(point => {
+  const positionedPoints = visiblePoints.map((point, index) => {
+    const showLabel = labelIndexes.has(index);
+    if (monthly && !showLabel) return { ...point, lane: 0, showLabel: false };
     const center = trackWidth * point.left / 100;
     const pointLeft = point.left < 5 ? center : point.left > 95 ? center - labelWidth : center - labelWidth / 2;
     let lane = laneEnds.findIndex(lastRight => lastRight + 3 <= pointLeft);
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = pointLeft + labelWidth;
-    return { ...point, lane };
+    return { ...point, lane, showLabel: true };
   });
-  const rowHeight = monthly ? Math.max(46, (laneEnds.length + 1) * 15 + 4) : 56;
-  const color = monthly ? '#8b6ca8' : '#a85b32';
+  const rowHeight = monthly ? Math.max(40, laneEnds.length * 17 + 22) : 56;
   const label = monthly ? 'Затраты на обучение, в помесячном выражении' : 'Затраты на обучение, нарастающим итогом';
   const dataTestId = monthly ? 'training-cost-monthly-row' : 'training-cost-cumulative-row';
   const unknownTotal = positionedPoints.length > 0
@@ -165,19 +170,22 @@ export function TrainingCostTimelineRow({
   const chart = <div data-testid={dataTestId} className={`border-b ${monthly ? 'border-[#e1d9e9] bg-[#f4f0f8]' : 'border-[#eadbce] bg-[#fbf1e9]'}`} role="group" aria-label={label}>
     <div className="flex">
       <div className={`sticky left-0 z-20 flex w-[184px] shrink-0 flex-col justify-center px-4 py-2 text-[10px] font-bold ${monthly ? 'bg-[#f4f0f8] text-[#725687]' : 'bg-[#fbf1e9] text-[#8a4e2d]'}`}>
-        <span>по всему проекту · ₸</span>
+        <span>{monthly ? 'по всему проекту' : label}</span>
+        <span className="mt-0.5 text-[9px] font-normal">{monthly ? '₸ · точная сумма при наведении' : 'по всему проекту · ₸'}</span>
       </div>
       <div ref={track} className="timeline-grid relative min-w-0 flex-1 overflow-hidden" style={{ height: `${rowHeight}px` }}>
-        {positionedPoints.map(({ date, report, left, lane }) => {
+        {positionedPoints.map(({ date, report, left, lane, showLabel }) => {
           const translate = left > 95 ? 'translateX(-100%)' : left < 5 ? undefined : 'translateX(-50%)';
           const prefix = `${report.partial ? '≥ ' : ''}${report.approximate ? '≈ ' : ''}`;
           const amount = unknownTotal ? '—' : `${prefix}${compact.format(report.totalKzt)}`;
-          return <div key={date} className="absolute" style={{ left: `${left}%`, top: `${monthly ? 4 + lane * 15 : 7}px`, transform: translate }}>
+          return <div key={date} className="absolute" style={{ left: `${left}%`, top: `${monthly ? showLabel ? 4 + lane * 17 : 23 : 7}px`, transform: translate }}>
             <TrainingCostPoint report={report} label={unknownTotal ? 'нет данных для расчёта' : formatKzt(report.totalKzt)}>
-              <div className={`rounded px-0.5 tabular-nums ${monthly ? 'text-[8px] font-bold text-[#725687]' : 'text-[9px] font-extrabold text-[#8a4e2d]'}`}>
-                {amount}
-              </div>
-              <div className="mt-0.5 text-[9px] text-[#827b73]">{shortDate(date)}</div>
+              {showLabel
+                ? monthly
+                  ? <div className="rounded border border-[#ded3e8] bg-white/95 px-1.5 py-0.5 text-[9px] font-extrabold leading-none tabular-nums text-[#604b77] shadow-sm">{amount}</div>
+                  : <div className="rounded px-0.5 text-[9px] font-extrabold leading-none tabular-nums text-[#8a4e2d]">{amount}</div>
+                : <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center"><span className="block h-1.5 w-1.5 rounded-full bg-[#8b6ca8] shadow-sm" /></span>}
+              {!monthly && <div className="mt-0.5 text-[9px] text-[#827b73]">{shortDate(date)}</div>}
             </TrainingCostPoint>
           </div>;
         })}

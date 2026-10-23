@@ -155,9 +155,35 @@ test('payroll and provenance survive project backup export/import', () => {
   assert.equal(restored.shops[0].roles[0].monthlyPayrollNote, 'Оценка, источник');
 });
 
+test('shop and role calculation switches survive backup export/import', () => {
+  const project = fixture();
+  project.shops[0].includedInCalculations = false;
+  project.shops[0].roles[1].visible = false;
+  const restored = parseProjectBackup(serializeProjectBackup(project));
+  assert.equal(restored.shops[0].includedInCalculations, false);
+  assert.equal(restored.shops[0].roles[1].visible, false);
+});
+
 test('reporting dates are month ends with an exact partial final date', () => {
   assert.deepEqual(payrollReportingDates('2028-01-16', '2028-03-10'), ['2028-01-31', '2028-02-29', '2028-03-10']);
   assert.deepEqual(payrollReportingDates('2028-02-01', '2028-02-29'), ['2028-02-29']);
   assert.deepEqual(payrollReportingDates('2028-01-31', '2028-03-01'), ['2028-01-31', '2028-02-29', '2028-03-01']);
   assert.deepEqual(payrollReportingDates('2028-03-10', '2028-03-01'), []);
+});
+
+test('shop and role calculation switches exclude their payroll rows', () => {
+  const project = fixture();
+  project.shops[0].roles[1].visible = false;
+  const sourceShop = fixture().shops[0];
+  project.shops.push({
+    ...sourceShop,
+    id: 'excluded-shop',
+    name: 'Исключённый цех',
+    includedInCalculations: false,
+    roles: sourceShop.roles.map(role => ({ ...role, id: `excluded-${role.id}` })),
+  });
+
+  const summary = getProjectPayroll(project);
+  assert.equal(summary.plannedPeople, 2);
+  assert.deepEqual(summary.entries.map(entry => entry.roleId), ['a']);
 });

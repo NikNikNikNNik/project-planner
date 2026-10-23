@@ -24,6 +24,11 @@ import { TrainingCostTimelineRow } from './TrainingCostTimelineRow';
 import { TimelineMetricModule } from './TimelineMetricModule';
 import { formatKzt } from './payroll';
 import { getTrainingCostEntries, getTrainingCostSummary, type TrainingCostEntry } from './training-costs';
+import {
+  getTrainingEventsIncludedInCalculation,
+  isRoleIncludedInCalculation,
+  isShopIncludedInCalculation,
+} from './calculation-scope.ts';
 import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 import {
   assignTrainingLanes,
@@ -287,7 +292,7 @@ function Planner() {
   const [timelineEnd, setTimelineEnd] = useState('');
   const [expandedShopIds, setExpandedShopIds] = useState<string[]>([]);
   const [showTimelinePhases, setShowTimelinePhases] = useState(true);
-  const [trainingTimelineCollapsed, setTrainingTimelineCollapsed] = useState(false);
+  const [trainingTimelineCollapsed, setTrainingTimelineCollapsed] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [toast, setToast] = useState('');
   const initializedId = useRef('');
@@ -309,7 +314,7 @@ function Planner() {
       setTimelineEnd(getProjectTimelineEnd(data));
       setExpandedShopIds([]);
       setShowTimelinePhases(true);
-      setTrainingTimelineCollapsed(false);
+       setTrainingTimelineCollapsed(true);
       setZoom(1);
     }
   }, [projectQuery.data]);
@@ -363,6 +368,7 @@ function Planner() {
     initializedId.current = created.id;
     savedJson.current = JSON.stringify(created);
     setShowTimelinePhases(true);
+    setTrainingTimelineCollapsed(true);
     setModal(null);
   };
   const downloadProjectBackup = (project: Project) => {
@@ -553,6 +559,32 @@ function Planner() {
   };
 
   const project = draft && draft.id === projectId ? draft : null;
+  const setShopCalculationIncluded = (shopId: string, included: boolean) => {
+    if (!project) return;
+    patch({
+      shops: project.shops.map(shop => shop.id === shopId
+        ? { ...shop, includedInCalculations: included }
+        : shop),
+    });
+  };
+  const setRoleCalculationIncluded = (shopId: string, roleId: string, included: boolean) => {
+    if (!project) return;
+    patch({
+      shops: project.shops.map(shop => shop.id === shopId
+        ? { ...shop, roles: shop.roles.map(role => role.id === roleId ? { ...role, visible: included } : role) }
+        : shop),
+    });
+  };
+  const includeAllRolesInCalculation = () => {
+    if (!project) return;
+    patch({
+      shops: project.shops.map(shop => ({
+        ...shop,
+        includedInCalculations: true,
+        roles: shop.roles.map(role => ({ ...role, visible: true })),
+      })),
+    });
+  };
   const projectDayType = project ? getProjectDayType(project.settings) : 'calendar';
   const totalDays = project ? dateDiff(timelineStart || project.startDate, timelineEnd || project.endDate) : 1;
   const position = (date: string) => Math.max(0, Math.min(100, (rawDateDiff(timelineStart || project!.startDate, date) / totalDays) * 100));
@@ -577,9 +609,13 @@ function Planner() {
     return items;
   }, [project, timelineStart, timelineEnd]);
   const staffReadyDate = project ? getProjectReadyDate(project) : null;
+  const trainingEventsInCalculation = useMemo(
+    () => project ? getTrainingEventsIncludedInCalculation(project) : [],
+    [project],
+  );
   const trainingTimeline = useMemo(
-    () => project ? scheduleTrainingTimeline(project, staffReadyDate) : [],
-    [project, staffReadyDate],
+    () => project ? scheduleTrainingTimeline({ ...project, training: trainingEventsInCalculation }, staffReadyDate) : [],
+    [project, staffReadyDate, trainingEventsInCalculation],
   );
   const trainingCostEntries = useMemo(
     () => project ? getTrainingCostEntries(project, trainingTimeline) : [],
@@ -609,7 +645,7 @@ function Planner() {
     if (!project) return null;
     const dates = trainingTimeline.map(item => item.startDate);
     for (const shop of project.shops) {
-      for (const role of shop.roles.filter(item => item.visible)) {
+      for (const role of shop.roles.filter(item => isRoleIncludedInCalculation(shop, item))) {
         const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, getShopReadyDate(project, shop.id));
         const date = rolePlan.onboardingStartDate ?? rolePlan.startDate;
         if (date) dates.push(date);
@@ -629,7 +665,7 @@ function Planner() {
     return project.shops
       .filter(shop => expandedShopIds.includes(shop.id))
       .flatMap(shop => shop.roles
-        .filter(role => role.visible)
+        .filter(role => isRoleIncludedInCalculation(shop, role))
         .flatMap(role => {
           const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, getShopReadyDate(project, shop.id));
           return [rolePlan.contractDate, rolePlan.onboardingStartDate, getRecruitmentStartDate(
@@ -650,7 +686,7 @@ function Planner() {
     setTimelineEnd(current => !current || dates[dates.length - 1] > current ? dates[dates.length - 1] : current);
   }, [project?.id, trainingTimeline, expandedRoleTimelineDates, hiringResearchMilestones]);
   const plannedTrainingDays = project
-    ? totalTrainingDays(project.training, project.settings.calculationMode, projectDayType)
+    ? totalTrainingDays(trainingEventsInCalculation, project.settings.calculationMode, projectDayType)
     : 0;
   const plannedPreparationDays = plannedTrainingDays + (plannedTrainingDays > 0 ? onboardingDurationDays : 0);
   const calculatedContractDate = project && staffReadyDate
@@ -664,7 +700,7 @@ function Planner() {
     : 0;
   const missingReadyShopNames = project?.settings.readyMilestone && project.settings.readyMonthsBefore !== undefined
     ? (project.settings.readyShopIds ?? project.shops.map(shop => shop.id))
-      .filter(shopId => !getShopReadyDate(project, shopId))
+      .filter(shopId => isShopIncludedInCalculation(project.shops.find(shop => shop.id === shopId) ?? { includedInCalculations: false }) && !getShopReadyDate(project, shopId))
       .map(shopId => project.shops.find(shop => shop.id === shopId)?.name ?? shopId)
     : [];
   const warningMessages = project ? [
@@ -889,7 +925,7 @@ function Planner() {
                       <input data-testid="input-project-title" className="display-font min-w-0 max-w-full border-0 border-b border-transparent bg-transparent p-0 text-xl font-semibold text-[#293640] outline-none hover:border-[#d3cec1] focus:border-[#bd4c2b] md:text-2xl" value={project.title} onChange={e => patch({ title: e.target.value })} />
                       <Pencil size={14} className="shrink-0 text-[#9c9a8e]" />
                     </div>
-                    <div className="mt-1 text-xs text-[#777b78]">{fmt(project.startDate)} — {fmt(project.endDate)} <span className="mx-1 text-[#c5bfb1]">·</span> {project.phases.length} этапа <span className="mx-1 text-[#c5bfb1]">·</span> {project.training.length} обучающих событий</div>
+                    <div className="mt-1 text-xs text-[#777b78]">{fmt(project.startDate)} — {fmt(project.endDate)} <span className="mx-1 text-[#c5bfb1]">·</span> {project.phases.length} этапа <span className="mx-1 text-[#c5bfb1]">·</span> {trainingEventsInCalculation.length} обучающих событий в расчёте</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button data-testid="button-add-phase" onClick={() => { setEditingPhase(null); setModal('phase'); }} className="control inline-flex h-8 items-center gap-1.5 px-2.5 text-[11px] font-bold text-[#4b5959]"><Plus size={13} />Этап</button>
@@ -951,6 +987,40 @@ function Planner() {
                       <div className="sticky left-0 z-20 w-[184px] shrink-0 bg-[#f7f5ee] px-4 py-2 text-[9px] font-bold uppercase tracking-[.14em] text-[#83867f]">Площадка / этап / обучение</div>
                       <div className="timeline-grid relative h-8 flex-1 overflow-hidden">{months.map((m, i) => <span key={`${m.label}-${i}`} className="absolute top-2 -translate-x-1/2 whitespace-nowrap text-[9px] font-semibold uppercase text-[#888a80]" style={{ left: `${m.left}%` }}>{m.label}</span>)}</div>
                     </div>
+                    <div className="pointer-events-none absolute bottom-0 left-[184px] right-0 top-8 z-[1]">
+                      <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
+                      {project.shops.flatMap(shop => {
+                        const lines: { id: string; date: string; label: string; color: string }[] = [];
+                        const mcDate = getMilestoneDateForShop(project.milestones.mc, shop.id);
+                        const rfsuDate = getMilestoneDateForShop(project.milestones.rfsu, shop.id);
+                        if (isMilestoneApplicableToShop(project.milestones.mc, shop.id) && mcDate) {
+                          lines.push({ id: `mc-${shop.id}`, date: mcDate, label: 'MC', color: '#bd4c2b' });
+                        }
+                        if (isMilestoneApplicableToShop(project.milestones.rfsu, shop.id) && rfsuDate) {
+                          lines.push({ id: `rfsu-${shop.id}`, date: rfsuDate, label: 'RFSU', color: '#52756d' });
+                        }
+                        return lines;
+                      }).map(line => <MilestoneLine
+                        key={line.id}
+                        date={line.date}
+                        start={timelineStart || project.startDate}
+                        totalDays={totalDays}
+                        label={line.label}
+                        color={line.color}
+                        showMarker={false}
+                        showLabel={false}
+                      />)}
+                      {hiringResearchMilestones.map(item => <MilestoneLine
+                        key={item.id}
+                        date={item.date}
+                        start={timelineStart || project.startDate}
+                        totalDays={totalDays}
+                        label={item.label}
+                        color={item.color}
+                        showMarker={false}
+                        showLabel={false}
+                      />)}
+                    </div>
                     <TimelineMetricModule title="ФОТ" tone="payroll">
                       <PayrollTimelineRow project={project} start={timelineStart || project.startDate} end={timelineEnd || project.endDate} />
                       <PayrollMonthlyTimelineRow project={project} start={timelineStart || project.startDate} end={timelineEnd || project.endDate} />
@@ -959,12 +1029,47 @@ function Planner() {
                       <TrainingCostTimelineRow project={project} entries={trainingCostEntries} start={timelineStart || project.startDate} end={timelineEnd || project.endDate} kind="cumulative" />
                       <TrainingCostTimelineRow project={project} entries={trainingCostEntries} start={timelineStart || project.startDate} end={timelineEnd || project.endDate} kind="monthly" />
                     </TimelineMetricModule>
-                    {hiringResearchMilestones.length > 0 && <div className="flex min-h-[42px] border-b border-[#ece8df]">
-                      <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 items-center bg-[#fbfaf5] px-4 text-[9px] font-bold text-[#596461]">Подготовка к найму</div>
-                      <div className="timeline-grid relative h-[42px] min-w-0 flex-1">
-                        <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
+                    <div className="flex min-h-[54px] border-b border-[#ece8df]">
+                      <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fbfaf5] px-4">
+                        <span className="text-[9px] font-bold text-[#596461]">Подготовка к найму</span>
+                        <button
+                          type="button"
+                          data-testid="button-include-all-calculations"
+                          onPointerDown={event => event.stopPropagation()}
+                          onClick={includeAllRolesInCalculation}
+                          className="mt-1 inline-flex w-fit items-center gap-1 text-[8px] font-bold text-[#bd4c2b] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]"
+                        >
+                          <Check size={10} />Включить в расчёт всех
+                        </button>
                       </div>
-                    </div>}
+                      <div className="timeline-grid relative h-[54px] min-w-0 flex-1">
+                        <div className="pointer-events-none absolute inset-0 z-[4] overflow-hidden">
+                          {[...hiringResearchMilestones].sort((a, b) => a.date.localeCompare(b.date)).map((item, index) => {
+                            const x = position(item.date);
+                            const labelTop = [1, 20, 39][index % 3];
+                            const labelOnLeft = x > 65;
+                            return <div key={item.id} className="absolute inset-y-0 w-0" style={{ left: `${x}%` }}>
+                              <span
+                                aria-hidden="true"
+                                className="absolute left-[-4px] top-[16px] h-2 w-2 rotate-45 border-2 bg-[#fbfaf5]"
+                                style={{ borderColor: item.color }}
+                              />
+                              <span
+                                title={`${item.label} · ${fmt(item.date)}`}
+                                className="absolute whitespace-nowrap rounded px-1 py-0.5 text-[8px] font-extrabold leading-[10px] text-white shadow-sm"
+                                style={{
+                                  top: `${labelTop}px`,
+                                  transform: labelOnLeft ? 'translateX(calc(-100% - 7px))' : 'translateX(7px)',
+                                  backgroundColor: item.color,
+                                }}
+                              >
+                                {item.label}
+                              </span>
+                            </div>;
+                          })}
+                        </div>
+                      </div>
+                    </div>
                     {project.shops.map((shop, shopIndex) => {
                       const phases = getShopTimelinePhases(project.phases, project.milestones, shop.id);
                       const rowMinHeight = showTimelinePhases
@@ -976,6 +1081,7 @@ function Planner() {
                       const rolesExpanded = expandedShopIds.includes(shop.id);
                       const shopReadyDate = getShopReadyDate(project, shop.id);
                       const shopContractDate = getShopContractDate(project, shop.id);
+                      const shopIncluded = isShopIncludedInCalculation(shop);
                       const mcDate = getMilestoneDateForShop(project.milestones.mc, shop.id);
                       const rfsuDate = getMilestoneDateForShop(project.milestones.rfsu, shop.id);
                       const mcReady = isMilestoneApplicableToShop(project.milestones.mc, shop.id);
@@ -984,6 +1090,18 @@ function Planner() {
                         <div className="flex min-h-[75px]" style={{ minHeight: `${rowMinHeight}px` }}>
                           <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fbfaf5] px-4">
                             <div className="flex items-center gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-md text-[9px] font-extrabold ${['bg-[#e8eee5] text-[#507565]', 'bg-[#f3ead9] text-[#92713c]', 'bg-[#f4e4dc] text-[#a64d32]', 'bg-[#e5ebef] text-[#5e7380]'][shopIndex % 4]}`}>{plantShort[shop.name] ?? `Ц${shopIndex + 1}`}</span><span className="text-xs font-bold">{shop.name}</span></div>
+                            <label className={`ml-8 mt-1 inline-flex w-fit cursor-pointer items-center gap-1 text-[8px] ${shopIncluded ? 'text-[#596b60]' : 'text-[#a64d32]'}`}>
+                              <input
+                                type="checkbox"
+                                data-testid={`shop-calculation-toggle-${shop.id}`}
+                                aria-label={`${shopIncluded ? 'Исключить' : 'Включить'} цех ${shop.name} из расчёта`}
+                                checked={shopIncluded}
+                                onPointerDown={event => event.stopPropagation()}
+                                onChange={event => setShopCalculationIncluded(shop.id, event.target.checked)}
+                                className="accent-[#bd4c2b]"
+                              />
+                              {shopIncluded ? 'В расчёте' : 'Не в расчёте'}
+                            </label>
                             <div className="ml-8 mt-1 max-w-[168px] text-[8px] leading-[1.25] text-[#85877e]">
                               <p className="truncate" title={`ИТР: ${roleSummary.itr.map(r => r.name).join(', ')}`}>ИТР · {roleSummary.itr.map(r => r.name).join(', ') || '—'}</p>
                               <p className="truncate" title={`Рабочие: ${roleSummary.workers.map(r => r.name).join(', ')}`}>Рабочие · {roleSummary.workers.map(r => r.name).join(', ') || '—'}</p>
@@ -997,7 +1115,6 @@ function Planner() {
                             </div>
                           </div>
                           <div className="timeline-grid relative min-w-0 flex-1 py-2.5">
-                            <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
                             {showTimelinePhases && phases.map((timelinePhase, i) => {
                               const left = position(timelinePhase.startDate);
                               const barWidth = width(timelinePhase.startDate, timelinePhase.endDate);
@@ -1009,18 +1126,19 @@ function Planner() {
                             })}
                             {(!rolesExpanded || !plannedRoles.length) && shopContractDate && <MilestoneLine date={shopContractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Контракт" color="#8060a8" labelOrientation="vertical" />}
                             {shopReadyDate && <MilestoneLine date={shopReadyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов 100%" color="#315f59" labelOrientation="vertical" />}
-                            {mcReady && mcDate && <MilestoneLine date={mcDate} start={timelineStart || project.startDate} totalDays={totalDays} label="MC" color="#bd4c2b" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: withMilestoneShopDate(project.milestones.mc, project.shops.map(item => item.id), shop.id, date) } }); }} />}
-                            {rfsuReady && rfsuDate && <MilestoneLine date={rfsuDate} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date, shiftDate(date, REGIME_RAMP_UP_DAYS)]); patch({ milestones: { ...project.milestones, rfsu: withMilestoneShopDate(project.milestones.rfsu, project.shops.map(item => item.id), shop.id, date) } }); }} />}
+                            {mcReady && mcDate && <MilestoneLine date={mcDate} start={timelineStart || project.startDate} totalDays={totalDays} label="MC" color="#bd4c2b" onMove={date => { expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: withMilestoneShopDate(project.milestones.mc, project.shops.map(item => item.id), shop.id, date) } }); }} showLine={false} />}
+                            {rfsuReady && rfsuDate && <MilestoneLine date={rfsuDate} start={timelineStart || project.startDate} totalDays={totalDays} label="RFSU" color="#52756d" onMove={date => { expandTimeline([date, shiftDate(date, REGIME_RAMP_UP_DAYS)]); patch({ milestones: { ...project.milestones, rfsu: withMilestoneShopDate(project.milestones.rfsu, project.shops.map(item => item.id), shop.id, date) } }); }} showLine={false} />}
                           </div>
                         </div>
                         {showTimelinePhases && phases.length === 0 && <div className="border-t border-dashed border-[#ece8df] py-1 pl-[200px] text-[9px] text-[#a3a195]">Для площадки нет назначенных этапов</div>}
-                        {rolesExpanded && (plannedRoles.length ? plannedRoles.map(role => {
+                        {rolesExpanded && (shop.roles.length ? shop.roles.map(role => {
+                          const roleIncluded = isRoleIncludedInCalculation(shop, role);
                           const rolePlan = getRoleTrainingPlan(project, shop.id, role.id, shopReadyDate);
-                          const recruitmentStartDate = getRecruitmentStartDate(
+                          const recruitmentStartDate = roleIncluded ? getRecruitmentStartDate(
                             rolePlan.contractDate,
                             project.settings.recruitmentLeadValue,
                             project.settings.recruitmentLeadUnit,
-                          );
+                          ) : null;
                           const timelineChartWidth = Math.max(
                             576,
                             (typeof window === 'undefined' ? 1440 : window.innerWidth) - 232,
@@ -1032,22 +1150,36 @@ function Planner() {
                               * timelineChartWidth / 100 < 76,
                           );
                           const onboardingStartDate = rolePlan.onboardingStartDate;
-                          const trainingLanes = assignTrainingLanes(rolePlan.schedule);
+                          const trainingLanes = roleIncluded ? assignTrainingLanes(rolePlan.schedule) : [];
                           const laneCount = Math.max(1, ...trainingLanes.map(item => item.lane + 1));
                           const roleTimelineHeight = Math.max(52, 20 + laneCount * 12);
                           const onboardingLeft = onboardingStartDate ? position(onboardingStartDate) : 0;
                           const onboardingWidth = onboardingStartDate && rolePlan.startDate ? width(onboardingStartDate, rolePlan.startDate) : 0;
-                          return <div key={role.id} className="flex min-h-[52px] border-t border-[#ece8df] bg-[#fdfcf8]">
+                          return <div key={role.id} className={`flex min-h-[52px] border-t border-[#ece8df] ${roleIncluded ? 'bg-[#fdfcf8]' : 'bg-[#f4f2eb]'}`}>
                             <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fdfcf8] pl-10 pr-3">
-                              <span className="truncate text-[9px] font-semibold text-[#4f5b58]" title={`${role.name} · ${shop.name}`}>{role.name}</span>
+                              <label className="flex min-w-0 cursor-pointer items-center gap-1.5">
+                                <input
+                                  type="checkbox"
+                                  data-testid={`role-calculation-toggle-${shop.id}-${role.id}`}
+                                  aria-label={`${role.visible !== false ? 'Исключить' : 'Включить'} роль ${role.name} из расчёта цеха ${shop.name}`}
+                                  checked={role.visible !== false}
+                                  onPointerDown={event => event.stopPropagation()}
+                                  onChange={event => setRoleCalculationIncluded(shop.id, role.id, event.target.checked)}
+                                  className="accent-[#bd4c2b]"
+                                />
+                                <span className="truncate text-[9px] font-semibold text-[#4f5b58]" title={`${role.name} · ${shop.name}`}>{role.name}</span>
+                              </label>
                               <span data-testid={`timeline-headcount-${role.id}`} className="mt-0.5 text-[10px] font-extrabold tabular-nums text-[#416350]" title={`Плановая численность роли «${role.name}»; ФОТ = месячная ставка на человека × ${role.headcount ?? 1}`}>
                                 {role.headcount ?? 1} чел.
                               </span>
-                              <span className="text-[8px] text-[#85877e]">{rolePlan.totalDays} дн. обучения{rolePlan.onboardingDurationDays > 0 ? ` + ${rolePlan.onboardingDurationDays} дн. онбординга` : ''}</span>
+                              <span className={`text-[8px] ${roleIncluded ? 'text-[#85877e]' : 'text-[#a64d32]'}`}>
+                                {roleIncluded
+                                  ? `${rolePlan.totalDays} дн. обучения${rolePlan.onboardingDurationDays > 0 ? ` + ${rolePlan.onboardingDurationDays} дн. онбординга` : ''}`
+                                  : shopIncluded ? 'Не участвует в расчёте' : 'Цех исключён из расчёта'}
+                              </span>
                             </div>
                             <div className="timeline-grid relative min-w-0 flex-1" style={{ height: `${roleTimelineHeight}px` }}>
-                              <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
-                              {rolePlan.hasTrainingBar && onboardingStartDate && rolePlan.startDate && <Tooltip.Root delayDuration={220}>
+                              {roleIncluded && rolePlan.hasTrainingBar && onboardingStartDate && rolePlan.startDate && <Tooltip.Root delayDuration={220}>
                                 <Tooltip.Trigger asChild>
                                   <button
                                     type="button"
@@ -1069,8 +1201,8 @@ function Planner() {
                                 </Tooltip.Portal>
                               </Tooltip.Root>}
                               {recruitmentStartDate && <MilestoneLine date={recruitmentStartDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Рекрутинг" color="#b77a3e" roleSpecific labelOrientation="vertical" labelPlacement={recruitmentLabelOverlapsContract ? 'bottom-0.5' : undefined} />}
-                              {rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Контракт" color="#8060a8" roleSpecific labelOrientation="vertical" />}
-                              {rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
+                              {roleIncluded && rolePlan.contractDate && <MilestoneLine date={rolePlan.contractDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Контракт" color="#8060a8" roleSpecific labelOrientation="vertical" />}
+                              {roleIncluded && rolePlan.readyDate && <MilestoneLine date={rolePlan.readyDate} start={timelineStart || project.startDate} totalDays={totalDays} label="Готов" color="#315f59" roleSpecific />}
                               {trainingLanes.map(item => <Tooltip.Root key={item.event.id} delayDuration={220}>
                                 <Tooltip.Trigger asChild>
                                   <button
@@ -1096,7 +1228,7 @@ function Planner() {
                               </Tooltip.Root>)}
                             </div>
                           </div>;
-                        }) : <div className="flex min-h-[38px] items-center border-t border-[#ece8df] pl-[200px] text-[9px] text-[#99978c]">В плане нет активных ролей для этого цеха.</div>)}
+                        }) : <div className="flex min-h-[38px] items-center border-t border-[#ece8df] pl-[200px] text-[9px] text-[#99978c]">В цехе пока нет ролей.</div>)}
                       </div>;
                     })}
                     <div className="border-t border-[#e7e2d8] bg-[#faf8f2]">
@@ -1105,21 +1237,21 @@ function Planner() {
                           type="button"
                           aria-expanded={!trainingTimelineCollapsed}
                           aria-controls="training-timeline-events"
-                          aria-label={trainingTimelineCollapsed ? 'Развернуть подготовку кадров' : 'Свернуть подготовку кадров'}
-                          title={trainingTimelineCollapsed ? 'Развернуть подготовку кадров' : 'Свернуть подготовку кадров'}
+                          aria-label={trainingTimelineCollapsed ? 'Развернуть календарь обучения' : 'Свернуть календарь обучения'}
+                          title={trainingTimelineCollapsed ? 'Развернуть календарь обучения' : 'Свернуть календарь обучения'}
                           onClick={() => setTrainingTimelineCollapsed(collapsed => !collapsed)}
                           className="sticky left-0 z-[5] flex w-[184px] shrink-0 items-center gap-1.5 bg-[#faf8f2] px-4 text-left hover:bg-[#f1eee5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]"
                         >
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e8e6f0] text-[#696182]"><Users size={13} /></span>
-                          <span className="min-w-0 flex-1 truncate text-[10px] font-bold">Подготовка кадров</span>
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-bold">Календарь обучения</span>
                           <ChevronDown size={12} className={`shrink-0 transition-transform ${trainingTimelineCollapsed ? '-rotate-90' : ''}`} />
                         </button>
                         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-[9px] text-[#726b82]">
-                          <span>{project.training.length} мероприятий</span><span>·</span><span>{plannedPreparationDays} {projectDayType === 'working' ? 'рабочих' : 'календарных'} дней с учётом онбординга</span>
+                          <span>{trainingTimeline.length} мероприятий</span><span>·</span><span>{plannedPreparationDays} {projectDayType === 'working' ? 'рабочих' : 'календарных'} дней с учётом онбординга</span>
                           <span className="hidden sm:inline">· Длительности учитываются {project.settings.calculationMode === 'sequential' ? 'последовательно' : 'параллельно'}</span>
                         </div>
                       </div>
-                      <div id="training-timeline-events" hidden={trainingTimelineCollapsed}>
+                      <div id="training-timeline-events" hidden={trainingTimelineCollapsed} className="max-h-[380px] overflow-y-auto overscroll-contain">
                       {trainingTimeline.map(item => {
                         const event = item.event;
                         const costEntry = trainingCostEntryById.get(event.id);
@@ -1136,7 +1268,6 @@ function Planner() {
                             <span className="ml-3.5 truncate text-[8px] text-[#8b897f]">{categoryNames[event.category]}</span>
                           </div>
                           <div className="timeline-grid relative h-[38px] min-w-0 flex-1">
-                            <TodayLine start={timelineStart || project.startDate} totalDays={totalDays} />
                             <Tooltip.Root delayDuration={220}>
                               <Tooltip.Trigger asChild>
                                 <button type="button" aria-label={`Обучение ${event.title}, ${event.duration} ${unitName}`} className="training-bar absolute top-[10px] z-[3] flex h-[18px] min-w-0 items-center overflow-hidden rounded-[4px] px-1.5 text-left text-[9px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]" style={{ left: `${left}%`, width: `${barWidth}%`, backgroundColor: trainingColors[event.category] }}>
@@ -1168,17 +1299,6 @@ function Planner() {
                       {trainingTimeline.length === 0 && <div className="flex min-h-[38px] items-center pl-[200px] text-[9px] text-[#99978c]">Добавьте обучение с длительностью больше нуля, чтобы увидеть его на шкале.</div>}
                       </div>
                     </div>
-                    {hiringResearchMilestones.length > 0 && <div className="pointer-events-none absolute bottom-0 left-[184px] right-0 top-8 z-[6]">
-                      {hiringResearchMilestones.map((item, index) => <MilestoneLine
-                        key={item.id}
-                        date={item.date}
-                        start={timelineStart || project.startDate}
-                        totalDays={totalDays}
-                        label={item.label}
-                        color={item.color}
-                        labelPlacement={index === 0 ? 'top-0.5' : index === 1 ? 'top-[16px]' : 'top-[28px]'}
-                      />)}
-                    </div>}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e5e1d7] px-4 py-3 md:px-5">
@@ -1216,7 +1336,7 @@ function Planner() {
                       </details>;
                     })}
                   </div>
-                  {project.training.length > 0 && <div className="flex items-center justify-between border-t border-[#e5e1d7] bg-[#f7f5ee] px-4 py-2.5 text-[10px] font-extrabold"><span>Общая длительность, включая онбординг</span><span className="mono">{plannedPreparationDays} дн.</span></div>}
+                  {trainingEventsInCalculation.length > 0 && <div className="flex items-center justify-between border-t border-[#e5e1d7] bg-[#f7f5ee] px-4 py-2.5 text-[10px] font-extrabold"><span>Общая длительность, включая онбординг</span><span className="mono">{plannedPreparationDays} дн.</span></div>}
                 </section>
                 <section className="panel rounded-xl">
                   <div className="border-b border-[#e5e1d7] px-4 py-3"><h3 className="text-xs font-extrabold">Контрольные даты</h3><p className="mt-0.5 text-[10px] text-[#85877e]">Основные точки готовности</p></div>
@@ -1404,7 +1524,7 @@ function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
   const x = (rawDateDiff(start, now) / totalDays) * 100;
   return x >= 0 && x <= 100 ? <div className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55" style={{ left: `${x}%` }}><span className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" /></div> : null;
 }
-function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide, labelOrientation }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right'; labelOrientation?: 'vertical' }) {
+function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide, labelOrientation, showLabel = true, showMarker = true, showLine = true }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right'; labelOrientation?: 'vertical'; showLabel?: boolean; showMarker?: boolean; showLine?: boolean }) {
   const pointerDown = useRef(false);
   const x = (rawDateDiff(start, date) / totalDays) * 100;
   if (x < 0 || x > 100) return null;
@@ -1420,8 +1540,8 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
     : label === 'Готов 100%' ? 'top-[20px]' : 'top-0.5');
   const markerPosition = roleSpecific && label === 'Готов' ? 'bottom-[7px]' : 'top-[7px]';
   return <div className={`pointer-events-none absolute bottom-0 top-0 ${roleSpecific ? 'z-[4]' : 'z-[2]'}`} style={{ left: `${x}%` }} title={`${fullLabel} · ${fmt(date)}`}>
-    <span className="absolute bottom-0 top-0 border-l border-dashed" style={{ borderColor: color }} />
-    <button
+    {showLine && <span className="absolute bottom-0 top-0 border-l border-dashed" style={{ borderColor: color }} />}
+    {showMarker && <button
       type="button"
       aria-label={`Переместить отсечку ${label}`}
       className={`pointer-events-auto absolute -left-[5px] ${markerPosition} h-[10px] w-[10px] touch-none rotate-45 border-2 bg-[#fbfaf5] cursor-ew-resize`}
@@ -1444,8 +1564,8 @@ function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpeci
       }}
       onPointerUp={() => { pointerDown.current = false; }}
       onPointerCancel={() => { pointerDown.current = false; }}
-    />
-    <span className={`absolute whitespace-nowrap rounded text-[8px] font-extrabold text-white shadow-sm ${labelOrientation === 'vertical' ? `flex h-3 items-center px-1 py-0 ${labelPlacement === 'bottom-0.5' ? 'left-[-7px] bottom-0.5 origin-bottom-left -rotate-90' : 'right-[19px] top-0.5 origin-top-right -rotate-90'}` : `px-1 py-0.5 ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`}`} style={{ background: color }}>{label}</span>
+    />}
+     {showLabel && <span className={`absolute whitespace-nowrap rounded text-[8px] font-extrabold text-white shadow-sm ${labelOrientation === 'vertical' ? `flex h-3 items-center px-1 py-0 ${labelPlacement === 'bottom-0.5' ? 'left-[-7px] bottom-0.5 origin-bottom-left -rotate-90' : 'right-[19px] top-0.5 origin-top-right -rotate-90'}` : `px-1 py-0.5 ${labelSide === 'left' ? 'right-[8px]' : 'left-1'} ${labelPosition}`}`} style={{ background: color }}>{label}</span>}
     <span className="sr-only">{fullLabel}: {fmt(date)}</span>
   </div>;
 }

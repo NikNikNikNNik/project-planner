@@ -52,6 +52,19 @@ test('calendar-month readiness clamps to the final day of a shorter month', () =
   assert.equal(shiftCalendarMonths('2027-03-31', -1), '2027-02-28');
 });
 
+test('disabled shops no longer constrain project personnel readiness', () => {
+  const plan = project();
+  plan.shops[0].includedInCalculations = false;
+
+  const remainingShopReadyDate = getShopReadyDate(plan, 'shop-b');
+  assert.ok(remainingShopReadyDate);
+  assert.equal(getShopReadyDate(plan, 'shop-a'), null);
+  assert.equal(getProjectReadyDate(plan), remainingShopReadyDate);
+
+  plan.shops[1].includedInCalculations = false;
+  assert.equal(getProjectReadyDate(plan), null);
+});
+
 test('recruitment start defaults to 60 calendar days before each role contract date', () => {
   assert.equal(getRecruitmentStartDate('2027-03-31'), '2027-01-30');
   assert.equal(getRecruitmentStartDate('2027-04-10'), '2027-02-09');

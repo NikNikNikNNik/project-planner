@@ -1,4 +1,5 @@
 import type { Project } from '@workspace/api-client-react';
+import { isShopIncludedInCalculation } from './calculation-scope.ts';
 import { getShopReadyDate } from './readiness.ts';
 import { getRoleTrainingPlan } from './training-planning.ts';
 
@@ -82,10 +83,11 @@ export function getPayrollBreakdown(project: Project, reportDate: string, kind: 
   let includedPeople = 0;
 
   for (const shop of project.shops) {
+    if (!isShopIncludedInCalculation(shop)) continue;
     const readyDate = getShopReadyDate(project, shop.id);
     for (const role of shop.roles) {
       const people = role.headcount ?? 1;
-      if (!role.visible || people <= 0) continue;
+      if (role.visible === false || people <= 0) continue;
 
       const rateIsValid = role.monthlyPayrollKzt !== undefined
         && Number.isFinite(role.monthlyPayrollKzt) && role.monthlyPayrollKzt >= 0;
@@ -152,10 +154,11 @@ export function getProjectPayroll(project: Project) {
   let plannedPeople = 0;
   let estimatedRoles = 0;
   for (const shop of project.shops) {
+    if (!isShopIncludedInCalculation(shop)) continue;
     const readyDate = getShopReadyDate(project, shop.id);
     for (const role of shop.roles) {
       const people = role.headcount ?? 1;
-      if (!role.visible || people <= 0) continue;
+      if (role.visible === false || people <= 0) continue;
       plannedPeople += people;
       const salary = role.monthlyPayrollKzt;
       const validSalary = salary !== undefined && Number.isFinite(salary) && salary >= 0;

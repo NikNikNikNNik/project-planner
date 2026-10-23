@@ -1,4 +1,5 @@
 import type { Project, Role, Shop, TrainingEvent } from '@workspace/api-client-react';
+import { getTrainingEventsIncludedForShop, isShopIncludedInCalculation } from './calculation-scope.ts';
 import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 import { getShopReadyDate } from './readiness.ts';
 
@@ -35,13 +36,14 @@ export type RoleTrainingPlan = {
 };
 
 export function getShopRoleSummary(shop: Shop): ShopRoleSummary {
-  const activeRoles = shop.roles.filter(role => role.visible);
+  const activeRoles = shop.roles.filter(role => role.visible !== false);
+  const calculatedRoles = isShopIncludedInCalculation(shop) ? activeRoles : [];
   return {
     roles: activeRoles,
     itr: activeRoles.filter(role => role.group === 'itr'),
     workers: activeRoles.filter(role => role.group === 'workers'),
-    count: activeRoles.length,
-    headcount: activeRoles.reduce((sum, role) => sum + (role.headcount ?? 1), 0),
+    count: calculatedRoles.length,
+    headcount: calculatedRoles.reduce((sum, role) => sum + (role.headcount ?? 1), 0),
   };
 }
 
@@ -123,12 +125,19 @@ export function totalTrainingDays(
 }
 
 export function getShopContractDate(project: Project, shopId: string) {
+  const shop = project.shops.find(item => item.id === shopId);
+  if (!shop || !isShopIncludedInCalculation(shop)) return null;
+  const hasRoleDefinitions = shop.roles.length > 0;
+  if (hasRoleDefinitions && !shop.roles.some(role => role.visible !== false)) return null;
   const readyDate = getShopReadyDate(project, shopId);
   if (!readyDate) return project.settings.contractDate ?? null;
 
   const dayType = getProjectDayType(project.settings);
+  const shopTraining = hasRoleDefinitions
+    ? getTrainingEventsIncludedForShop(project, shopId)
+    : project.training.filter(event => event.shopIds.includes(shopId) && event.roleIds.length === 0);
   const trainingDaysForShop = totalTrainingDays(
-    project.training.filter(event => event.shopIds.includes(shopId)),
+    shopTraining,
     project.settings.calculationMode,
     dayType,
   );

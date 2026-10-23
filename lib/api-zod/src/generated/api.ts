@@ -72,6 +72,7 @@ export const CreateProjectBody = zod.object({
   "shops": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "includedInCalculations": zod.boolean().optional().describe('Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects.'),
   "roles": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -192,6 +193,7 @@ export const CreateProjectResponse = zod.object({
   "shops": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "includedInCalculations": zod.boolean().optional().describe('Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects.'),
   "roles": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -320,6 +322,7 @@ export const GetProjectResponse = zod.object({
   "shops": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "includedInCalculations": zod.boolean().optional().describe('Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects.'),
   "roles": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -446,6 +449,7 @@ export const UpdateProjectBody = zod.object({
   "shops": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "includedInCalculations": zod.boolean().optional().describe('Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects.'),
   "roles": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -566,6 +570,7 @@ export const UpdateProjectResponse = zod.object({
   "shops": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "includedInCalculations": zod.boolean().optional().describe('Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects.'),
   "roles": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -704,6 +709,7 @@ export const CopyProjectResponse = zod.object({
   "shops": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "includedInCalculations": zod.boolean().optional().describe('Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects.'),
   "roles": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),

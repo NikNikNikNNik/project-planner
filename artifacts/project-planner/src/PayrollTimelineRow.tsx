@@ -3,6 +3,7 @@ import * as HoverCard from '@radix-ui/react-hover-card';
 import { Download } from 'lucide-react';
 import type { Project } from '@workspace/api-client-react';
 import { CollapsibleTimelineRow } from './CollapsibleTimelineRow';
+import { getReadableTimelineLabelIndexes } from './timeline-labels';
 import {
   formatKzt,
   getCumulativePayrollKzt,
@@ -177,19 +178,25 @@ export function PayrollMonthlyTimelineRow({ project, start, end }: { project: Pr
 
   const startMs = Date.parse(`${start}T00:00:00Z`);
   const span = Math.max(1, Date.parse(`${end}T00:00:00Z`) - startMs);
-  const labelWidth = 56;
+  const labelWidth = 76;
+  const labelIndexes = getReadableTimelineLabelIndexes(dates.length, trackWidth, labelWidth);
   const laneEnds: number[] = [];
-  const points = dates.map(date => {
+  const rawPoints = dates.map(date => {
     const amount = getMonthlyPayrollKzt(summary.entries, date);
     const left = Math.max(0, Math.min(100, (Date.parse(`${date}T00:00:00Z`) - startMs) / span * 100));
+    return { date, amount, left };
+  });
+  const points = rawPoints.map((point, index) => {
+    if (!labelIndexes.has(index)) return { ...point, lane: 0, showLabel: false };
+    const { left } = point;
     const center = trackWidth * left / 100;
     const pointLeft = left < 5 ? center : left > 95 ? center - labelWidth : center - labelWidth / 2;
     let lane = laneEnds.findIndex(lastRight => lastRight + 3 <= pointLeft);
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = pointLeft + labelWidth;
-    return { date, amount, left, lane };
+    return { ...point, lane, showLabel: true };
   });
-  const rowHeight = Math.max(46, (laneEnds.length + 1) * 15 + 4);
+  const rowHeight = Math.max(40, laneEnds.length * 17 + 22);
   const unknownTotal = summary.partial && summary.entries.length === 0;
   return <CollapsibleTimelineRow
     title="ФОТ, в помесячном выражении"
@@ -202,17 +209,19 @@ export function PayrollMonthlyTimelineRow({ project, start, end }: { project: Pr
       <div className="flex">
         <div className="sticky left-0 z-20 flex w-[184px] shrink-0 flex-col justify-center bg-[#edf1f7] px-4 py-2 text-[10px] font-bold text-[#455a7d]">
           <span>по всему проекту</span>
-          <span className="mt-0.5 text-[9px] font-normal">₸{summary.partial ? ' · неполный' : ''}</span>
+          <span className="mt-0.5 text-[9px] font-normal">₸ · точная сумма при наведении{summary.partial ? ' · неполный' : ''}</span>
         </div>
         <div ref={track} className="timeline-grid relative min-w-0 flex-1 overflow-hidden" style={{ height: `${rowHeight}px` }}>
-          {points.map(({ date, amount, left, lane }) => {
+          {points.map(({ date, amount, left, lane, showLabel }) => {
             const x = left > 95 ? 'translateX(-100%)' : left < 5 ? undefined : 'translateX(-50%)';
-            return <div key={date} className="absolute" style={{ left: `${left}%`, top: `${4 + lane * 15}px`, transform: x }}>
+            return <div key={date} className="absolute" style={{ left: `${left}%`, top: `${showLabel ? 4 + lane * 17 : 23}px`, transform: x }}>
               <PayrollPoint project={project} date={date} kind="monthly" left={left}
                 label={unknownTotal ? 'нет данных для расчёта' : formatKzt(amount)}>
-                <div className="rounded px-0.5 text-[8px] font-bold tabular-nums text-[#455a7d]">
-                  {unknownTotal ? '—' : `${summary.partial ? '≥ ' : ''}${compact.format(amount)}`}
-                </div>
+                {showLabel
+                  ? <div className="rounded border border-[#d5deeb] bg-white/95 px-1.5 py-0.5 text-[9px] font-extrabold leading-none tabular-nums text-[#344c73] shadow-sm">
+                      {unknownTotal ? '—' : `${summary.partial ? '≥ ' : ''}${compact.format(amount)}`}
+                    </div>
+                  : <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center"><span className="block h-1.5 w-1.5 rounded-full bg-[#526b96] shadow-sm" /></span>}
               </PayrollPoint>
             </div>;
           })}

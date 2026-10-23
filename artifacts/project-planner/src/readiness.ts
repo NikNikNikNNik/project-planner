@@ -1,4 +1,5 @@
 import type { Project } from '@workspace/api-client-react';
+import { isShopIncludedInCalculation } from './calculation-scope.ts';
 import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 
 type ProjectMilestone = Project['milestones']['mc'];
@@ -104,6 +105,8 @@ function legacyReadyDate(project: Project) {
 
 export function getShopReadyDate(project: Project, shopId: string) {
   const { settings, milestones } = project;
+  const shop = project.shops.find(item => item.id === shopId);
+  if (shop && !isShopIncludedInCalculation(shop)) return null;
   if (settings.readyShopIds && !settings.readyShopIds.includes(shopId)) return null;
 
   const shopRule = settings.readyShopRules?.[shopId];
@@ -121,7 +124,11 @@ export function getShopReadyDate(project: Project, shopId: string) {
 
 export function getProjectReadyDate(project: Project) {
   const { settings } = project;
-  const shopIds = settings.readyShopIds ?? project.shops.map(shop => shop.id);
+  const shopIds = (settings.readyShopIds ?? project.shops.map(shop => shop.id))
+    .filter(shopId => {
+      const shop = project.shops.find(item => item.id === shopId);
+      return shop && isShopIncludedInCalculation(shop);
+    });
   if (shopIds.length === 0) return null;
   const dates = shopIds.map(shopId => getShopReadyDate(project, shopId));
   if (dates.some(date => !date)) return null;

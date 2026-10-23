@@ -60,6 +60,40 @@ test('workbook starts both sheets with the role-specific recruitment start date'
   assert.equal(summary.getRow(5).getCell(5).value, 4);
 });
 
+test('recruitment workbook omits excluded roles and shops', async () => {
+  const plan = project();
+  plan.shops[0].roles[0].visible = false;
+  plan.shops[0].roles.push({
+    id: 'active-role',
+    name: 'Учитываемый оператор',
+    group: 'workers',
+    visible: true,
+    headcount: 1,
+  });
+  plan.shops.push({
+    id: 'excluded-shop',
+    name: 'Исключённый цех',
+    includedInCalculations: false,
+    roles: [{
+      id: 'excluded-role',
+      name: 'Не учитывать электрика',
+      group: 'workers',
+      visible: true,
+      headcount: 1,
+    }],
+  });
+
+  const workbook = await createRecruitmentWorkbook(plan);
+  const sheet = workbook.getWorksheet('По площадкам');
+  assert.ok(sheet);
+  const values: unknown[] = [];
+  sheet.eachRow(row => row.eachCell(cell => values.push(cell.value)));
+  assert.ok(values.includes('Учитываемый оператор'));
+  assert.equal(values.includes('Начальник цеха'), false);
+  assert.equal(values.includes('Не учитывать электрика'), false);
+  assert.equal(values.includes('Исключённый цех'), false);
+});
+
 test('workbook recruitment date follows a month-based project setting', async () => {
   const workbook = await createRecruitmentWorkbook(project(2, 'months'));
   assert.ok(workbook);

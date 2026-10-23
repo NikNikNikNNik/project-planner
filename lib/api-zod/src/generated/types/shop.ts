@@ -10,5 +10,7 @@ import type { Role } from './role';
 export interface Shop {
   id: string;
   name: string;
+  /** Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects. */
+  includedInCalculations?: boolean;
   roles: Role[];
 }

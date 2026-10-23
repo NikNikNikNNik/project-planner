@@ -1,5 +1,6 @@
 import type ExcelJS from 'exceljs';
 import type { Project, Role, TrainingEvent } from '@workspace/api-client-react';
+import { isShopIncludedInCalculation } from './calculation-scope.ts';
 import { getProjectDayType, shiftKazakhstanWorkdays } from './kazakhstan-calendar.ts';
 import { getProjectReadyDate, getRecruitmentStartDate, getShopReadyDate } from './readiness.ts';
 import { durationInDays } from './training-planning.ts';
@@ -53,9 +54,10 @@ function getRoleTrainingDays(project: Project, role: Role, shopId: string, dayTy
 function buildRows(project: Project): RecruitmentRow[] {
   const dayType = getProjectDayType(project.settings);
   return project.shops.flatMap(shop => {
+    if (!isShopIncludedInCalculation(shop)) return [];
     const readyDate = getShopReadyDate(project, shop.id);
     return shop.roles
-      .filter(role => role.visible && (role.headcount ?? 1) > 0)
+      .filter(role => role.visible !== false && (role.headcount ?? 1) > 0)
       .map(role => {
         const days = getRoleTrainingDays(project, role, shop.id, dayType);
       const onboardingDays = days > 0

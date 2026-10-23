@@ -84,6 +84,13 @@ test('collapsed shop summary includes only active roles in the correct groups', 
   assert.deepEqual(summary.workers.map(role => role.name), ['Оператор']);
 });
 
+test('disabled shop keeps its role list visible but removes people from the summary', () => {
+  const summary = getShopRoleSummary({ ...shop, includedInCalculations: false });
+  assert.equal(summary.roles.length, 2);
+  assert.equal(summary.count, 0);
+  assert.equal(summary.headcount, 0);
+});
+
 test('shop contract dates use each shop readiness and only that shop training with onboarding', () => {
   const plan = project('sequential');
   plan.shops.push({ id: 'shop-b', name: 'Цех B', roles: [] });

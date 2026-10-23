@@ -178,6 +178,9 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
+        includedInCalculations:
+          type: boolean
+          description: Whether roles from this shop contribute to project calculations. Missing values are treated as included for legacy projects.
         roles:
           type: array
           items: { $ref: "#/components/schemas/Role" }

@@ -1,4 +1,5 @@
 import type { Project, TrainingEvent } from '@workspace/api-client-react';
+import { isTrainingEventIncludedForShop, isTrainingEventIncludedInCalculation } from './calculation-scope.ts';
 import type { ScheduledTraining } from './training-planning';
 import { getProjectDayType, isKazakhstanWorkday } from './kazakhstan-calendar.ts';
 
@@ -90,6 +91,8 @@ export function getTrainingCostEntries(project: Project, schedule: ScheduledTrai
   const additionalNonWorkingDates = project.settings.additionalNonWorkingDates ?? [];
 
   return project.training.map(event => {
+    const hasAssignedAudience = event.shopIds.length > 0 || event.roleIds.length > 0;
+    const includedInCalculation = !hasAssignedAudience || isTrainingEventIncludedInCalculation(project, event);
     const scheduled = scheduleById.get(event.id);
     const enteredCostKzt = event.costUsd === undefined
       ? null
@@ -103,11 +106,11 @@ export function getTrainingCostEntries(project: Project, schedule: ScheduledTrai
       ? enteredCostKzt === null
         ? null
         : enteredCostKzt * internshipCostBasis.groupCount
-      : enteredCostKzt;
-    const startDate = isIsoDate(scheduled?.startDate)
+      : includedInCalculation ? enteredCostKzt : 0;
+    const startDate = includedInCalculation && isIsoDate(scheduled?.startDate)
       ? scheduled.startDate
-      : isIsoDate(event.startDate) ? event.startDate : null;
-    const endDate = isIsoDate(scheduled?.endDate) ? scheduled.endDate : null;
+      : includedInCalculation && isIsoDate(event.startDate) ? event.startDate : null;
+    const endDate = includedInCalculation && isIsoDate(scheduled?.endDate) ? scheduled.endDate : null;
 
     let activeDates = scheduled && startDate && endDate
       ? dateRange(startDate, endDate).filter(date =>
@@ -144,7 +147,7 @@ export function getTrainingCostEntries(project: Project, schedule: ScheduledTrai
 
 function getInternshipCostBasis(project: Project, event: TrainingEvent, pricePerGroupKzt: number | null): InternshipCostBasis {
   const participantCount = project.shops
-    .filter(shop => event.shopIds.includes(shop.id))
+    .filter(shop => isTrainingEventIncludedForShop(shop, event))
     .flatMap(shop => shop.roles)
     .filter(role => event.roleIds.length === 0 || event.roleIds.includes(role.id))
     .reduce((sum, role) => {
