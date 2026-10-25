@@ -20,6 +20,7 @@ import {
 } from '@workspace/api-client-react';
 import { downloadRecruitmentWorkbook } from './recruitment-export';
 import { PayrollMonthlyTimelineRow, PayrollTimelineRow } from './PayrollTimelineRow';
+import { PayrollRatesDisclosure } from './PayrollRatesDisclosure';
 import { TrainingCostTimelineRow } from './TrainingCostTimelineRow';
 import { TimelineMetricModule } from './TimelineMetricModule';
 import { formatKzt } from './payroll';
@@ -1476,6 +1477,16 @@ function Planner() {
                     })}
                   </div>
                   {trainingEventsInCalculation.length > 0 && <div className="flex items-center justify-between border-t border-[#e5e1d7] bg-[#f7f5ee] px-4 py-2.5 text-[10px] font-extrabold"><span>Общая длительность, включая онбординг</span><span className="mono">{plannedPreparationDays} дн.</span></div>}
+                   <PayrollRatesDisclosure
+                     project={project}
+                     onRateChange={(shopId, roleId, rate) => patch({
+                       shops: project.shops.map(shop => shop.id === shopId
+                         ? { ...shop, roles: shop.roles.map(role => role.id === roleId
+                           ? { ...role, monthlyPayrollKzt: rate }
+                           : role) }
+                         : shop),
+                     })}
+                   />
                 </section>
                 <section className="panel rounded-xl">
                   <div className="border-b border-[#e5e1d7] px-4 py-3"><h3 className="text-xs font-extrabold">Контрольные даты</h3><p className="mt-0.5 text-[10px] text-[#85877e]">Основные точки готовности</p></div>
