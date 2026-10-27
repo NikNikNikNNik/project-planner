@@ -7,7 +7,7 @@ import { getTrainingCostEntries, getTrainingCostReport, getTrainingCostSummary }
 import { getTrainingEventsIncludedInCalculation, isShopIncludedInCalculation } from './calculation-scope.ts';
 
 const definitions = [
-  ['hire', 'Нанято персонала', 'чел.'],
+  ['hire', 'Нанято персонала — всего по профессиям', 'чел.'],
   ['online', 'Онлайн-обучения', 'чел.-дн.'],
   ['atyrau', 'Обучения в г. Атырау', 'чел.-дн.'],
   ['offsite', 'Выездные обучения', 'чел.-дн.'],

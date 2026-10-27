@@ -1100,7 +1100,6 @@ function Planner() {
                 </div>
               </div>
 
-              <ProjectStatusPanel project={project} onChange={actualRecords => patch({ settings: { ...project.settings, actualRecords } })} />
               <div className="panel overflow-hidden rounded-xl">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e1d7] px-4 py-3.5 md:px-5">
                   <div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e9e5d9] text-[#586764]"><CalendarDays size={15} /></div><div><h2 className="text-sm font-extrabold">Сводный календарный план</h2><p className="text-[10px] text-[#8a8b82]">Этапы по площадкам и готовность кадров</p></div></div>
@@ -1541,6 +1540,9 @@ function Planner() {
                   <input ref={projectImportInputRef} type="file" accept=".json,application/json" className="hidden" aria-label="Выбрать файл резервной копии проекта" onChange={event => void importProjectBackup(event)} />
                 </div>
               </section>
+              <div className="mt-4">
+                <ProjectStatusPanel project={project} onChange={actualRecords => patch({ settings: { ...project.settings, actualRecords } })} />
+              </div>
             </>}
           </section>
         </div>
