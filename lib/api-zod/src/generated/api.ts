@@ -17,32 +17,6 @@ export const HealthCheckResponse = zod.object({
 })
 
 
-export const GetAppSessionResponse = zod.object({
-  "authenticated": zod.boolean(),
-  "configured": zod.boolean()
-})
-
-
-export const loginAppBodyUsernameMax = 200;
-
-export const loginAppBodyPasswordMax = 1024;
-
-
-
-export const LoginAppBody = zod.object({
-  "username": zod.string().min(1).max(loginAppBodyUsernameMax),
-  "password": zod.string().min(1).max(loginAppBodyPasswordMax)
-})
-
-export const LoginAppResponse = zod.object({
-  "authenticated": zod.boolean(),
-  "configured": zod.boolean()
-})
-
-
-export const LogoutAppResponse = zod.void()
-
-
 /**
  * @summary List projects and planning summaries
  */

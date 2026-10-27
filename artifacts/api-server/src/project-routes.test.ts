@@ -41,9 +41,10 @@ test("projects are created without access credentials", () => {
   assert.doesNotMatch(route.body, /credentials|access|password|username/i);
 });
 
-test("project routes use one application gate, not per-project credentials", () => {
+test("project routes are mounted without an application or per-project login gate", () => {
   const index = readFileSync(new URL("./routes/index.ts", import.meta.url), "utf8");
-  assert.match(index, /router\.use\(auth\.requireAuth, projectsRouter\)/);
+  assert.match(index, /router\.use\(projectsRouter\)/);
+  assert.doesNotMatch(index, /auth\.|requireAuth|createAppAuth|express-session/);
   for (const route of routes) {
     assert.doesNotMatch(route.body, /requestHasProjectAccess|AuthenticateProjectBody|CopyProjectBody/);
   }

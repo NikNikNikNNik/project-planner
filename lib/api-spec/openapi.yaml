@@ -10,16 +10,11 @@ servers:
 tags:
   - name: health
     description: Health operations
-  - name: auth
-    description: Application sign-in
   - name: projects
     description: Project planning
-security:
-  - appSession: []
 paths:
   /healthz:
     get:
-      security: []
       operationId: healthCheck
       tags: [health]
       summary: Health check
@@ -31,51 +26,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /auth/session:
-    get:
-      security: []
-      operationId: getAppSession
-      tags: [auth]
-      responses:
-        "200":
-          description: Current application access
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AppSession"
-  /auth/login:
-    post:
-      security: []
-      operationId: loginApp
-      tags: [auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AppCredentials"
-      responses:
-        "200":
-          description: Signed in
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AppSession"
-        "400":
-          description: Invalid input
-        "401":
-          description: Invalid credentials
-        "429":
-          description: Too many attempts
-        "503":
-          description: Access not configured or session store unavailable
-  /auth/logout:
-    post:
-      operationId: logoutApp
-      tags: [auth]
-      responses:
-        "204":
-          description: Session ended
   /projects:
     get:
       operationId: listProjects
@@ -186,32 +136,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PlanningSummary"
 components:
-  securitySchemes:
-    appSession:
-      type: apiKey
-      in: cookie
-      name: planner_session
   schemas:
-    AppSession:
-      type: object
-      required: [authenticated, configured]
-      properties:
-        authenticated:
-          type: boolean
-        configured:
-          type: boolean
-    AppCredentials:
-      type: object
-      required: [username, password]
-      properties:
-        username:
-          type: string
-          minLength: 1
-          maxLength: 200
-        password:
-          type: string
-          minLength: 1
-          maxLength: 1024
     HealthStatus:
       type: object
       properties:

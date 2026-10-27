@@ -5,24 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface AppSession {
-  authenticated: boolean;
-  configured: boolean;
-}
-
-export interface AppCredentials {
-  /**
-     * @minLength 1
-     * @maxLength 200
-     */
-  username: string;
-  /**
-     * @minLength 1
-     * @maxLength 1024
-     */
-  password: string;
-}
-
 export interface HealthStatus {
   status: string;
 }
