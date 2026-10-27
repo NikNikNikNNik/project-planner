@@ -22,6 +22,7 @@ import { downloadRecruitmentWorkbook } from './recruitment-export';
 import { trainingNoteForDisplay } from './training-note-display';
 import { deliveryModeNames, trainingDeliveryLabel } from './training-delivery';
 import { ProjectStatusPanel } from './ProjectStatusPanel';
+import { PreparationPanel } from './PreparationPanel';
 import { PayrollMonthlyTimelineRow, PayrollTimelineRow } from './PayrollTimelineRow';
 import { PayrollRatesDisclosure } from './PayrollRatesDisclosure';
 import { TrainingCostTimelineRow } from './TrainingCostTimelineRow';
@@ -1459,9 +1460,8 @@ function Planner() {
                 </div>
               </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
-                <section className="panel rounded-xl">
-                  <div className="flex items-center justify-between border-b border-[#e5e1d7] px-4 py-3"><div><h3 className="text-xs font-extrabold">Подготовка персонала</h3><p className="mt-0.5 text-[10px] text-[#85877e]">Суммарно: {plannedTrainingDays} дн. обучения{plannedPreparationDays > plannedTrainingDays ? ` + ${plannedPreparationDays - plannedTrainingDays} дн. онбординга` : ''} · {project.settings.calculationMode === 'sequential' ? 'последовательный режим' : 'параллельный режим'}</p></div><button onClick={() => { setEditingTraining(null); setModal('training'); }} className="btn-quiet flex h-7 items-center gap-1 rounded px-2 text-[10px] font-bold text-[#bd4c2b]"><Plus size={12} />Добавить обучение</button></div>
+              <PreparationPanel training={<>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e5e1d7] px-4 py-2.5"><p className="text-[10px] text-[#85877e]">Суммарно: {plannedTrainingDays} дн. обучения{plannedPreparationDays > plannedTrainingDays ? ` + ${plannedPreparationDays - plannedTrainingDays} дн. онбординга` : ''} · {project.settings.calculationMode === 'sequential' ? 'последовательный режим' : 'параллельный режим'}</p><button onClick={() => { setEditingTraining(null); setModal('training'); }} className="btn-quiet flex h-7 items-center gap-1 rounded px-2 text-[10px] font-bold text-[#bd4c2b]"><Plus size={12} />Добавить обучение</button></div>
                   {project.training.length === 0 && <div className="px-4 py-5 text-[11px] text-[#878980]">Добавьте мероприятия: их длительность будет учтена при расчёте даты контракта.</div>}
                     <div key={project.id} aria-label="Список обучений" tabIndex={0} className="max-h-[55vh] overflow-y-auto overscroll-contain divide-y divide-[#eee9df] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]">
                     {trainingCategories.map(category => {
@@ -1495,9 +1495,7 @@ function Planner() {
                          : shop),
                      })}
                    />
-                </section>
-                <section className="panel rounded-xl">
-                  <div className="border-b border-[#e5e1d7] px-4 py-3"><h3 className="text-xs font-extrabold">Контрольные даты</h3><p className="mt-0.5 text-[10px] text-[#85877e]">Основные точки готовности</p></div>
+                </>} dates={<>
                   <div className="grid grid-cols-2 divide-x divide-[#eee9df]">
                     <MilestoneCard code="MC" title="Механическая готовность" date={commonMilestoneDate(project.milestones.mc, project.shops.map(shop => shop.id))} shopDates={project.milestones.mc.shopDates ?? {}} note={project.milestones.mc.note} shops={project.shops} shopIds={project.milestones.mc.shopIds} onChange={date => { const shopDates = Object.fromEntries(project.shops.map(shop => [shop.id, date])); expandTimeline([date]); patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, date, shopDates } } }); }} onShopDateChange={(shopId, date) => { const mc = withMilestoneShopDate(project.milestones.mc, project.shops.map(shop => shop.id), shopId, date); expandTimeline([date]); patch({ milestones: { ...project.milestones, mc } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, mc: { ...project.milestones.mc, shopIds: project.milestones.mc.shopIds.includes(id) ? project.milestones.mc.shopIds.filter(value => value !== id) : [...project.milestones.mc.shopIds, id] } } })} />
                     <MilestoneCard code="RFSU" title="Готовность к пуску" date={commonMilestoneDate(project.milestones.rfsu, project.shops.map(shop => shop.id))} shopDates={project.milestones.rfsu.shopDates ?? {}} note={project.milestones.rfsu.note} shops={project.shops} shopIds={project.milestones.rfsu.shopIds} onChange={date => { const shopDates = Object.fromEntries(project.shops.map(shop => [shop.id, date])); expandTimeline([date, date ? shiftDate(date, REGIME_RAMP_UP_DAYS) : null]); patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, date, shopDates } } }); }} onShopDateChange={(shopId, date) => { const rfsu = withMilestoneShopDate(project.milestones.rfsu, project.shops.map(shop => shop.id), shopId, date); expandTimeline([date, date ? shiftDate(date, REGIME_RAMP_UP_DAYS) : null]); patch({ milestones: { ...project.milestones, rfsu } }); }} onNoteChange={note => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, note } } })} onShopToggle={id => patch({ milestones: { ...project.milestones, rfsu: { ...project.milestones.rfsu, shopIds: project.milestones.rfsu.shopIds.includes(id) ? project.milestones.rfsu.shopIds.filter(value => value !== id) : [...project.milestones.rfsu.shopIds, id] } } })} />
@@ -1523,8 +1521,7 @@ function Planner() {
                       project={project}
                       onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
                     />
-                </section>
-              </div>
+                </>} />
               <section className="panel mt-4 flex flex-col gap-3 rounded-xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-xs font-extrabold">Резервная копия проекта</h3>
