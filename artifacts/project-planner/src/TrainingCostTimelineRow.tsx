@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import * as HoverCard from '@radix-ui/react-hover-card';
 import { Download } from 'lucide-react';
 import type { Project } from '@workspace/api-client-react';
@@ -13,6 +13,7 @@ import {
   type TrainingCostReportKind,
 } from './training-costs';
 import { downloadTrainingCostWorkbook } from './training-cost-export';
+import { useObservedWidth } from './use-observed-width';
 
 const compact = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 });
 const shortDate = (date: string) => `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(2, 4)}`;
@@ -122,16 +123,7 @@ export function TrainingCostTimelineRow({
   end: string;
   kind: TrainingCostReportKind;
 }) {
-  const track = useRef<HTMLDivElement>(null);
-  const [trackWidth, setTrackWidth] = useState(576);
-  useEffect(() => {
-    if (!track.current) return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.width > 0) setTrackWidth(entry.contentRect.width);
-    });
-    observer.observe(track.current);
-    return () => observer.disconnect();
-  }, []);
+  const { ref: track, width: trackWidth } = useObservedWidth<HTMLDivElement>();
 
   const dates = useMemo(() => getTrainingCostReportingDates(start, end), [start, end]);
   const startMs = Date.parse(`${start}T00:00:00Z`);

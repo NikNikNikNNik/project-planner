@@ -1672,7 +1672,19 @@ function SummaryTile({ label, value, unit, tone }: { label: string; value: numbe
 function TodayLine({ start, totalDays }: { start: string; totalDays: number }) {
   const now = iso(new Date());
   const x = (rawDateDiff(start, now) / totalDays) * 100;
-  return x >= 0 && x <= 100 ? <div className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55" style={{ left: `${x}%` }}><span className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" /></div> : null;
+  return x >= 0 && x <= 100 ? <div
+    aria-label={`Сегодня, ${fmt(now)}`}
+    className="absolute bottom-0 top-0 z-[1] w-px bg-[#bd4c2b]/55"
+    style={{ left: `${x}%` }}
+  >
+    <span aria-hidden="true" className="absolute -top-1 -left-[3px] h-1.5 w-1.5 rounded-full bg-[#bd4c2b]" />
+    <span
+      className="absolute top-0 whitespace-nowrap rounded bg-[#bd4c2b] px-1 py-0.5 text-[8px] font-bold leading-none text-white shadow-sm"
+      style={x > 75 ? { right: '2px' } : { left: '2px' }}
+    >
+      Сегодня
+    </span>
+  </div> : null;
 }
 function MilestoneLine({ date, start, totalDays, label, color, onMove, roleSpecific = false, labelPlacement, labelSide, labelOrientation, showLabel = true, showMarker = true, showLine = true }: { date: string; start: string; totalDays: number; label: string; color: string; onMove?: (date: string) => void; roleSpecific?: boolean; labelPlacement?: 'top-0.5' | 'bottom-0.5' | 'top-[16px]' | 'top-[28px]'; labelSide?: 'left' | 'right'; labelOrientation?: 'vertical'; showLabel?: boolean; showMarker?: boolean; showLine?: boolean }) {
   const pointerDown = useRef(false);
