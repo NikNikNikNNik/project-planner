@@ -1522,6 +1522,9 @@ function Planner() {
                       onChange={settings => patch({ settings: { ...project.settings, ...settings } })}
                     />
                 </>} />
+              <div className="mt-4">
+                <ProjectStatusPanel project={project} onChange={actualRecords => patch({ settings: { ...project.settings, actualRecords } })} />
+              </div>
               <section className="panel mt-4 flex flex-col gap-3 rounded-xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-xs font-extrabold">Резервная копия проекта</h3>
@@ -1537,9 +1540,6 @@ function Planner() {
                   <input ref={projectImportInputRef} type="file" accept=".json,application/json" className="hidden" aria-label="Выбрать файл резервной копии проекта" onChange={event => void importProjectBackup(event)} />
                 </div>
               </section>
-              <div className="mt-4">
-                <ProjectStatusPanel project={project} onChange={actualRecords => patch({ settings: { ...project.settings, actualRecords } })} />
-              </div>
             </>}
           </section>
         </div>
