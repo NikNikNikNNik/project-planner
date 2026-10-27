@@ -19,6 +19,7 @@ import {
   type Role,
 } from '@workspace/api-client-react';
 import { downloadRecruitmentWorkbook } from './recruitment-export';
+import { trainingNoteForDisplay } from './training-note-display';
 import { PayrollMonthlyTimelineRow, PayrollTimelineRow } from './PayrollTimelineRow';
 import { PayrollRatesDisclosure } from './PayrollRatesDisclosure';
 import { TrainingCostTimelineRow } from './TrainingCostTimelineRow';
@@ -1360,7 +1361,7 @@ function Planner() {
                                     <h4 className="text-[11px] font-extrabold">{item.event.title}</h4>
                                     <p className="mt-1 text-[9px] text-[#777b76]">{role.name} · {categoryNames[item.event.category]} · {statusNames[item.event.status]}</p>
                                     <p className="mt-1 text-[9px] font-semibold">{item.event.duration} {item.event.unit === 'days' ? 'дн.' : item.event.unit === 'weeks' ? 'нед.' : 'мес.'} · {item.durationDays} дн. · {fmt(item.startDate)} — {fmt(item.endDate)}{item.event.costUsd !== undefined ? ` · бюджет: ${trainingCostDisplay(trainingCostEntryById.get(item.event.id))}` : ''}</p>
-                                    {item.event.note && <p className="mt-1 whitespace-pre-wrap text-[9px] text-[#777b76]">{item.event.note}</p>}
+                                    {trainingNoteForDisplay(item.event.note) && <p className="mt-1 whitespace-pre-wrap text-[9px] text-[#777b76]">{trainingNoteForDisplay(item.event.note)}</p>}
                                     {item.approximate && <p className="mt-1 text-[9px] text-[#9a6830]">Дата рассчитана предварительно от начала проекта.</p>}
                                     <Tooltip.Arrow className="fill-[#fbfaf5]" />
                                   </Tooltip.Content>
@@ -1427,7 +1428,7 @@ function Planner() {
                                     <dt className="text-[#81847c]">Площадки</dt><dd>{eventShops.map(shop => shop.name).join(', ') || 'Не указаны'}</dd>
                                     <dt className="text-[#81847c]">Роли</dt><dd>{event.roleIds.length ? roleLabels.join('; ') || 'Указанные роли не найдены' : 'Все роли выбранных площадок'}</dd>
                                   </dl>
-                                  {event.note && <p className="mt-2 whitespace-pre-wrap border-t border-[#e9e5dc] pt-2 text-[10px] leading-relaxed"><span className="font-bold">Примечание: </span>{event.note}</p>}
+                                  {trainingNoteForDisplay(event.note) && <p className="mt-2 whitespace-pre-wrap border-t border-[#e9e5dc] pt-2 text-[10px] leading-relaxed"><span className="font-bold">Примечание: </span>{trainingNoteForDisplay(event.note)}</p>}
                                   {item.approximate && <p className="mt-2 border-t border-[#e9e5dc] pt-2 text-[9px] text-[#9a6830]">Положение предварительное: дата готовности и дата контракта не заданы, поэтому план отсчитан от начала проекта.</p>}
                                   <Tooltip.Arrow className="fill-[#fbfaf5]" />
                                 </Tooltip.Content>
@@ -2271,7 +2272,7 @@ function RolesModal({ project, onClose, onSave, onAddTraining }: { project: Proj
                     {assignedTrainings.map(event => <li key={event.id} className="border-t border-[#e9e5dc] pt-2 first:border-0 first:pt-0">
                       <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-bold">{event.title}</span><span className="shrink-0 text-[9px] text-[#777b76]">{statusNames[event.status]}</span></div>
                        <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[event.category]} · {event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, dayType)} дн.{event.costUsd !== undefined ? ` · ${event.category === 'internship' ? `${formatKzt(event.costUsd)} за группу из 10 человек` : formatKzt(event.costUsd)}` : ''}</p>
-                      {event.note && <p className="mt-1 whitespace-pre-wrap text-[9px] leading-relaxed text-[#6d7470]">{event.note}</p>}
+                      {trainingNoteForDisplay(event.note) && <p className="mt-1 whitespace-pre-wrap text-[9px] leading-relaxed text-[#6d7470]">{trainingNoteForDisplay(event.note)}</p>}
                     </li>)}
                   </ul> : <p className="text-[10px] text-[#777b76]">Для этой роли пока не назначено обучение.</p>}
                   <Tooltip.Arrow className="fill-[#fbfaf5]" />
