@@ -17,6 +17,14 @@ function calendarDate(value: string): Date | null {
 
 const daysInMonth = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
 
+/** Monthly role total shown in the editable payroll list; null means the rate is missing or invalid. */
+export function getRoleMonthlyPayrollKzt(rate: number | undefined, headcount: number | undefined): number | null {
+  if (rate === undefined || !Number.isFinite(rate) || rate < 0) return null;
+  const people = headcount ?? 1;
+  if (!Number.isFinite(people) || people <= 0) return 0;
+  return rate * people;
+}
+
 /** Calendar-month accrual, inclusive of the contract date and the reporting date. */
 export function payrollMonthFraction(contractDate: string, throughDate: string): number {
   const start = calendarDate(contractDate);
@@ -87,7 +95,7 @@ export function getPayrollBreakdown(project: Project, reportDate: string, kind: 
     const readyDate = getShopReadyDate(project, shop.id);
     for (const role of shop.roles) {
       const people = role.headcount ?? 1;
-      if (role.visible === false || people <= 0) continue;
+      if (role.visible === false || !Number.isFinite(people) || people <= 0) continue;
 
       const rateIsValid = role.monthlyPayrollKzt !== undefined
         && Number.isFinite(role.monthlyPayrollKzt) && role.monthlyPayrollKzt >= 0;
@@ -158,7 +166,7 @@ export function getProjectPayroll(project: Project) {
     const readyDate = getShopReadyDate(project, shop.id);
     for (const role of shop.roles) {
       const people = role.headcount ?? 1;
-      if (role.visible === false || people <= 0) continue;
+      if (role.visible === false || !Number.isFinite(people) || people <= 0) continue;
       plannedPeople += people;
       const salary = role.monthlyPayrollKzt;
       const validSalary = salary !== undefined && Number.isFinite(salary) && salary >= 0;

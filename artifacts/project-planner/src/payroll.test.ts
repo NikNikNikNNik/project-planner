@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Project } from '@workspace/api-client-react';
-import { getCumulativePayrollKzt, getMonthlyPayrollKzt, getPayrollBreakdown, getProjectPayroll, payrollMonthFraction, payrollReportingDates } from './payroll.ts';
+import { getCumulativePayrollKzt, getMonthlyPayrollKzt, getPayrollBreakdown, getProjectPayroll, getRoleMonthlyPayrollKzt, payrollMonthFraction, payrollReportingDates } from './payroll.ts';
 import { parseProjectBackup, serializeProjectBackup } from './project-backup.ts';
 import { createPayrollBreakdownWorkbook } from './payroll-export.ts';
 
@@ -147,6 +147,61 @@ test('zero salary is a known zero, not an unset field', () => {
   const summary = getProjectPayroll(p);
   assert.equal(summary.missingSalaryPeople, 0);
   assert.equal(summary.entries[0].monthlyTotalKzt, 0);
+});
+
+test('editing a role rate recalculates monthly and cumulative project payroll', () => {
+  const p = fixture();
+  const role = p.shops[0].roles[0];
+
+  role.monthlyPayrollKzt = 400_000;
+  const updated = getProjectPayroll(p);
+  assert.equal(updated.entries[0].monthlyTotalKzt, 800_000);
+  assert.equal(getMonthlyPayrollKzt(updated.entries, '2028-02-29'), 1_090_000);
+  assert.equal(getCumulativePayrollKzt(updated.entries, '2028-02-29'), 1_502_903);
+
+  role.monthlyPayrollKzt = undefined;
+  const cleared = getProjectPayroll(p);
+  assert.equal(cleared.missingSalaryPeople, 2);
+  assert.equal(cleared.partial, true);
+  assert.deepEqual(cleared.entries.map(entry => entry.roleId), ['b']);
+  const report = getPayrollBreakdown(p, '2028-02-29', 'monthly');
+  assert.equal(report.lines[0].amountKzt, null);
+  assert.equal(report.lines[0].issue, 'Не указана месячная ставка на человека');
+  assert.equal(report.totalKzt, 290_000);
+});
+
+test('invalid rates and malformed headcounts do not poison project payroll totals', () => {
+  const p = fixture();
+  p.shops[0].roles[0].monthlyPayrollKzt = -1;
+  p.shops[0].roles[1].monthlyPayrollKzt = Number.POSITIVE_INFINITY;
+
+  let summary = getProjectPayroll(p);
+  assert.equal(summary.plannedPeople, 3);
+  assert.equal(summary.missingSalaryPeople, 3);
+  assert.equal(summary.entries.length, 0);
+  assert.equal(summary.partial, true);
+  assert.equal(getPayrollBreakdown(p, '2028-02-29', 'monthly').lines[0].monthlyRateKzt, null);
+
+  p.shops[0].roles[0].headcount = Number.NaN;
+  p.shops[0].roles[1].headcount = Number.POSITIVE_INFINITY;
+  summary = getProjectPayroll(p);
+  assert.equal(summary.plannedPeople, 0);
+  assert.equal(summary.missingSalaryPeople, 0);
+  assert.equal(summary.missingContractPeople, 0);
+  assert.equal(summary.entries.length, 0);
+  assert.equal(summary.partial, false);
+  assert.equal(getPayrollBreakdown(p, '2028-02-29', 'monthly').lines.length, 0);
+});
+
+test('role monthly total distinguishes empty, zero, invalid, and nonpositive headcount', () => {
+  assert.equal(getRoleMonthlyPayrollKzt(undefined, 3), null);
+  assert.equal(getRoleMonthlyPayrollKzt(-1, 3), null);
+  assert.equal(getRoleMonthlyPayrollKzt(Number.NaN, 3), null);
+  assert.equal(getRoleMonthlyPayrollKzt(0, 3), 0);
+  assert.equal(getRoleMonthlyPayrollKzt(125_000, 4), 500_000);
+  assert.equal(getRoleMonthlyPayrollKzt(125_000, undefined), 125_000);
+  assert.equal(getRoleMonthlyPayrollKzt(125_000, 0), 0);
+  assert.equal(getRoleMonthlyPayrollKzt(125_000, Number.NaN), 0);
 });
 
 test('payroll and provenance survive project backup export/import', () => {

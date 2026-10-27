@@ -1,7 +1,7 @@
 import type { Project } from '@workspace/api-client-react';
 import { ChevronDown } from 'lucide-react';
 import { isRoleIncludedInCalculation } from './calculation-scope.ts';
-import { formatKzt } from './payroll';
+import { formatKzt, getRoleMonthlyPayrollKzt } from './payroll';
 
 export function PayrollRatesDisclosure({
   project,
@@ -40,9 +40,7 @@ export function PayrollRatesDisclosure({
             {shop.roles.map(role => {
               const included = isRoleIncludedInCalculation(shop, role);
               const headcount = role.headcount ?? 1;
-              const totalMonthly = role.monthlyPayrollKzt === undefined
-                ? null
-                : role.monthlyPayrollKzt * headcount;
+              const totalMonthly = getRoleMonthlyPayrollKzt(role.monthlyPayrollKzt, headcount);
               return <div key={role.id} className={`grid grid-cols-[minmax(100px,1fr)_minmax(130px,190px)_minmax(120px,180px)] items-center gap-3 px-4 py-2 ${included ? '' : 'bg-[#f7f6f2] text-[#94958d]'}`}>
                 <div className="min-w-0">
                   <div className="truncate text-[10px] font-semibold" title={role.name}>{role.name}</div>
@@ -69,7 +67,9 @@ export function PayrollRatesDisclosure({
                 <div className="text-right">
                   <div className="text-[8px] text-[#737a77]">ФОТ профессии в месяц</div>
                   <div className="mt-0.5 text-[10px] font-bold tabular-nums text-[#416350]">
-                    {totalMonthly === null ? 'Не указано' : `${formatKzt(totalMonthly)}/мес.`}
+                    {totalMonthly === null
+                      ? role.monthlyPayrollKzt === undefined ? 'Не указано' : 'Проверьте ставку'
+                      : `${formatKzt(totalMonthly)}/мес.`}
                   </div>
                 </div>
               </div>;
