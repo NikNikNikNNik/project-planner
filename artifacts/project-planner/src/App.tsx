@@ -111,6 +111,12 @@ const categoryNames: Record<string, string> = {
 const statusNames: Record<string, string> = { planned: 'Запланировано', in_progress: 'В процессе', completed: 'Завершено' };
 const plantShort: Record<string, string> = { 'Пиролиз': 'ПИР', 'Бутен1': 'БУТ', 'Полимеризация': 'ПОЛ', 'ОЗХ': 'ОЗХ' };
 const trainingCategories: TrainingEvent['category'][] = ['mandatory', 'technology', 'internship', 'lvcc', 'other'];
+const trainingDeliveryGroups = [
+  { key: 'online', label: deliveryModeNames.online, includes: (event: TrainingEvent) => event.deliveryMode === 'online' },
+  { key: 'atyrau', label: deliveryModeNames.atyrau, includes: (event: TrainingEvent) => event.deliveryMode === 'atyrau' },
+  { key: 'offsite', label: deliveryModeNames.offsite, includes: (event: TrainingEvent) => event.deliveryMode === 'offsite' },
+  { key: 'unspecified', label: 'Формат не указан', includes: (event: TrainingEvent) => !event.deliveryMode || !Object.hasOwn(deliveryModeNames, event.deliveryMode) },
+];
 function trainingCostDisplay(entry: TrainingCostEntry | undefined) {
   if (!entry || entry.totalCostKzt === null) return '';
   const basis = entry.internshipCostBasis;
@@ -1464,23 +1470,36 @@ function Planner() {
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e5e1d7] px-4 py-2.5"><p className="text-[10px] text-[#85877e]">Суммарно: {plannedTrainingDays} дн. обучения{plannedPreparationDays > plannedTrainingDays ? ` + ${plannedPreparationDays - plannedTrainingDays} дн. онбординга` : ''} · {project.settings.calculationMode === 'sequential' ? 'последовательный режим' : 'параллельный режим'}</p><button onClick={() => { setEditingTraining(null); setModal('training'); }} className="btn-quiet flex h-7 items-center gap-1 rounded px-2 text-[10px] font-bold text-[#bd4c2b]"><Plus size={12} />Добавить обучение</button></div>
                   {project.training.length === 0 && <div className="px-4 py-5 text-[11px] text-[#878980]">Добавьте мероприятия: их длительность будет учтена при расчёте даты контракта.</div>}
                     <div key={project.id} aria-label="Список обучений" tabIndex={0} className="max-h-[55vh] overflow-y-auto overscroll-contain divide-y divide-[#eee9df] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#bd4c2b]">
-                    {trainingCategories.map(category => {
-                      const events = project.training.filter(event => event.category === category).sort((a, b) => a.sortOrder - b.sortOrder);
-                      const categoryDays = events.reduce((sum, event) => sum + trainingDays(event, projectDayType), 0);
-                       return <details key={category} className="group/training">
+                    {trainingDeliveryGroups.map(group => {
+                      const deliveryEvents = project.training.filter(group.includes).sort((a, b) => a.sortOrder - b.sortOrder);
+                      const deliveryDays = deliveryEvents.reduce((sum, event) => sum + trainingDays(event, projectDayType), 0);
+                      return <details key={group.key} className="group/delivery">
                         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 bg-[#faf8f2] px-4 py-2.5 text-[10px] font-bold text-[#596461]">
-                          <span className="flex items-center gap-2"><ChevronDown size={12} className="transition-transform group-open/training:rotate-180" />{categoryNames[category]} <span className="font-normal text-[#8a8b82]">{events.length}</span></span>
-                          <span className="mono text-[9px] text-[#777b76]">{categoryDays} дн.</span>
+                          <span className="flex items-center gap-2"><ChevronDown size={12} className="transition-transform group-open/delivery:rotate-180" />{group.label}<span className="font-normal text-[#8a8b82]">{deliveryEvents.length} событий</span></span>
+                          <span className="mono text-[9px] text-[#777b76]">{deliveryDays} дн.</span>
                         </summary>
-                        {events.length > 0 ? events.map((event, eventIndex) => <div key={event.id} className="flex items-center gap-2 border-t border-[#eee9df] px-4 py-2.5">
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${event.status === 'completed' ? 'bg-[#587c70]' : event.status === 'in_progress' ? 'bg-[#c58b3a]' : 'bg-[#8b7ba3]'}`} />
-                           <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[10px] font-bold text-[#416a5d]">{trainingDeliveryLabel(event)}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, projectDayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}{event.startDate && <> · начало {fmt(event.startDate)}</>}{event.costUsd !== undefined && <> · {trainingCostDisplay(trainingCostEntryById.get(event.id))}</>}</div></button>
-                          <span className="hidden rounded-full bg-[#efede5] px-2 py-1 text-[9px] font-semibold text-[#707772] sm:inline-flex">{statusNames[event.status]}</span>
-                          <IconButton label="Переместить выше" onClick={() => moveTraining(event.id, -1)}><ArrowLeft size={12} className="-rotate-90" /></IconButton>
-                          <IconButton label="Переместить ниже" onClick={() => moveTraining(event.id, 1)}><ArrowRight size={12} className="rotate-90" /></IconButton>
-                          <IconButton label="Копировать обучение" onClick={() => duplicateTraining(event)}><Copy size={12} /></IconButton>
-                          <IconButton label="Изменить обучение" onClick={() => { setEditingTraining(event); setModal('training'); }}><Pencil size={12} /></IconButton>
-                        </div>) : <p className="px-8 py-3 text-[10px] text-[#99998f]">В разделе пока нет мероприятий.</p>}
+                        {deliveryEvents.length > 0 ? trainingCategories
+                          .filter(category => deliveryEvents.some(event => event.category === category))
+                          .map(category => {
+                            const events = deliveryEvents.filter(event => event.category === category);
+                            const categoryDays = events.reduce((sum, event) => sum + trainingDays(event, projectDayType), 0);
+                            return <details key={`${group.key}-${category}`} className="group/category">
+                              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 border-t border-[#eee9df] bg-[#fcfbf7] px-8 py-2 text-[10px] font-semibold text-[#596461]">
+                                <span className="flex items-center gap-2"><ChevronDown size={11} className="transition-transform group-open/category:rotate-180" />{categoryNames[category]}<span className="font-normal text-[#8a8b82]">{events.length}</span></span>
+                                <span className="mono text-[9px] text-[#777b76]">{categoryDays} дн.</span>
+                              </summary>
+                              {events.map(event => <div key={event.id} className="flex items-center gap-2 border-t border-[#eee9df] px-4 py-2.5">
+                                <span className={`h-2 w-2 shrink-0 rounded-full ${event.status === 'completed' ? 'bg-[#587c70]' : event.status === 'in_progress' ? 'bg-[#c58b3a]' : 'bg-[#8b7ba3]'}`} />
+                                <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, projectDayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}{event.startDate && <> · начало {fmt(event.startDate)}</>}{event.costUsd !== undefined && <> · {trainingCostDisplay(trainingCostEntryById.get(event.id))}</>}</div></button>
+                                <span className="hidden rounded-full bg-[#efede5] px-2 py-1 text-[9px] font-semibold text-[#707772] sm:inline-flex">{statusNames[event.status]}</span>
+                                <IconButton label="Переместить выше" onClick={() => moveTraining(event.id, -1)}><ArrowLeft size={12} className="-rotate-90" /></IconButton>
+                                <IconButton label="Переместить ниже" onClick={() => moveTraining(event.id, 1)}><ArrowRight size={12} className="rotate-90" /></IconButton>
+                                <IconButton label="Копировать обучение" onClick={() => duplicateTraining(event)}><Copy size={12} /></IconButton>
+                                <IconButton label="Изменить обучение" onClick={() => { setEditingTraining(event); setModal('training'); }}><Pencil size={12} /></IconButton>
+                              </div>)}
+                            </details>;
+                          })
+                          : <p className="px-8 py-3 text-[10px] text-[#99998f]">В этом формате пока нет мероприятий.</p>}
                       </details>;
                     })}
                   </div>
