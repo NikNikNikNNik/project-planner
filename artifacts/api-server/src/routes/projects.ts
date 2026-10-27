@@ -17,6 +17,7 @@ import {
   type ProjectInput,
 } from "@workspace/api-zod";
 import { projectPlanForStorage, projectPlanFromStorage } from "../lib/project-plan";
+import { actualRecordErrors } from "../lib/actual-records";
 
 const router: IRouter = Router();
 
@@ -81,6 +82,8 @@ router.post("/projects", async (req, res): Promise<void> => {
     return;
   }
   const input = parsed.data;
+  const actualErrors = actualRecordErrors(input);
+  if (actualErrors.length) { res.status(400).json({ error: actualErrors.join(' ') }); return; }
   if (rejectInvalidTrainingRoleReferences(input, res)) return;
   const id = crypto.randomUUID();
   const [row] = await db
@@ -125,6 +128,8 @@ router.put("/projects/:projectId", async (req, res): Promise<void> => {
     return;
   }
   const input = parsed.data;
+  const actualErrors = actualRecordErrors(input);
+  if (actualErrors.length) { res.status(400).json({ error: actualErrors.join(' ') }); return; }
   if (rejectInvalidTrainingRoleReferences(input, res)) return;
   const [row] = await db
     .update(projectsTable)

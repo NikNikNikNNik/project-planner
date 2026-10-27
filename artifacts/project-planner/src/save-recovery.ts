@@ -6,7 +6,16 @@ export type SaveRecoverySnapshot<T> = {
 
 export function serializeProjectSnapshot<T extends { updatedAt?: unknown }>(project: T): string {
   const { updatedAt: _updatedAt, ...savedFields } = project;
-  return JSON.stringify(savedFields);
+  // The API parses objects in schema order, while edits append fields in UI order.
+  // Compare values, not insertion order, or a successful PUT looks unsaved forever.
+  const normalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(normalize);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, normalize(child)]));
+    }
+    return value;
+  };
+  return JSON.stringify(normalize(savedFields));
 }
 
 export function parseSaveRecoverySnapshot<T>(value: string): SaveRecoverySnapshot<T> | null {

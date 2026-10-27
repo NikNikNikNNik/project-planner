@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './actualRecord';
+export * from './actualRecordDeliveryMode';
+export * from './actualRecordKind';
 export * from './additionalNonWorkingDate';
 export * from './healthStatus';
 export * from './milestone';

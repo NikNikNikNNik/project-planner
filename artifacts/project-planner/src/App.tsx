@@ -21,6 +21,7 @@ import {
 import { downloadRecruitmentWorkbook } from './recruitment-export';
 import { trainingNoteForDisplay } from './training-note-display';
 import { deliveryModeNames, trainingDeliveryLabel } from './training-delivery';
+import { ProjectStatusPanel } from './ProjectStatusPanel';
 import { PayrollMonthlyTimelineRow, PayrollTimelineRow } from './PayrollTimelineRow';
 import { PayrollRatesDisclosure } from './PayrollRatesDisclosure';
 import { TrainingCostTimelineRow } from './TrainingCostTimelineRow';
@@ -112,14 +113,17 @@ const trainingCategories: TrainingEvent['category'][] = ['mandatory', 'technolog
 function trainingCostDisplay(entry: TrainingCostEntry | undefined) {
   if (!entry || entry.totalCostKzt === null) return '';
   const basis = entry.internshipCostBasis;
-  if (!basis) return formatKzt(entry.totalCostKzt);
+  const travel = entry.event.deliveryMode === 'offsite'
+    ? ` · выезд: ${formatKzt(entry.event.travelCostPerPersonKzt ?? 0)} × ${entry.participantCount} чел. = ${formatKzt(entry.travelCostKzt)}${entry.event.travelCostPerPersonKzt === undefined ? ' (стоимость не указана)' : ''}`
+    : '';
+  if (!basis) return formatKzt(entry.totalCostKzt) + travel;
   const rate = basis.pricePerGroupKzt === null
     ? 'цена группы не указана'
     : `${formatKzt(basis.pricePerGroupKzt)} за группу`;
   const rounding = basis.participantCount > 0 && basis.participantCount % basis.groupSize !== 0
     ? ' · неполная группа округлена вверх'
     : '';
-  return `${formatKzt(entry.totalCostKzt)} · ${basis.participantCount} чел. → ${basis.groupCount} групп по ${basis.groupSize} (${rate}${rounding})`;
+  return `${formatKzt(entry.totalCostKzt)} · ${basis.participantCount} чел. → ${basis.groupCount} групп по ${basis.groupSize} (${rate}${rounding})${travel}`;
 }
 function trainingCostInputBasis(event: TrainingEvent) {
   if (event.costUsd === undefined) return '';
@@ -783,7 +787,7 @@ function Planner() {
       ? `Без даты: ${trainingCostSummary.unallocatedEvents.length} · ${formatKzt(trainingCostSummary.unallocatedCostKzt)}`
       : '',
     trainingCostSummary.unpricedEvents.length > 0
-      ? `Без стоимости: ${trainingCostSummary.unpricedEvents.length}`
+      ? `Без полной стоимости: ${trainingCostSummary.unpricedEvents.length}`
       : '',
     trainingCostSummary.unassignedAudienceEvents.length > 0
       ? `Стажировки без участников: ${trainingCostSummary.unassignedAudienceEvents.length}`
@@ -1096,6 +1100,7 @@ function Planner() {
                 </div>
               </div>
 
+              <ProjectStatusPanel project={project} onChange={actualRecords => patch({ settings: { ...project.settings, actualRecords } })} />
               <div className="panel overflow-hidden rounded-xl">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e1d7] px-4 py-3.5 md:px-5">
                   <div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#e9e5d9] text-[#586764]"><CalendarDays size={15} /></div><div><h2 className="text-sm font-extrabold">Сводный календарный план</h2><p className="text-[10px] text-[#8a8b82]">Этапы по площадкам и готовность кадров</p></div></div>
@@ -2167,6 +2172,7 @@ function TrainingModal({ event, project, onClose, onSave, onDelete, presetScope 
   const [unit, setUnit] = useState<TrainingEvent['unit']>(event?.unit ?? 'days');
   const [startDate, setStartDate] = useState(event?.startDate ?? '');
   const [costUsd, setCostUsd] = useState(event?.costUsd === undefined ? '' : String(event.costUsd));
+  const [travelCost, setTravelCost] = useState(event?.travelCostPerPersonKzt === undefined ? '' : String(event.travelCostPerPersonKzt));
   const [status, setStatus] = useState<TrainingEvent['status']>(event?.status ?? 'planned');
   const [shopIds, setShopIds] = useState<string[]>(event?.shopIds ?? presetScope?.shopIds ?? project.shops.map(s => s.id));
   const [roleIds, setRoleIds] = useState<string[]>(event?.roleIds ?? presetScope?.roleIds ?? []);
@@ -2175,13 +2181,16 @@ function TrainingModal({ event, project, onClose, onSave, onDelete, presetScope 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const parsedCost = costUsd.trim() === '' ? undefined : Number(costUsd);
+    const parsedTravel = travelCost.trim() === '' ? undefined : Number(travelCost);
+    if (parsedTravel !== undefined && (!Number.isFinite(parsedTravel) || parsedTravel < 0)) return;
     if (Number(duration) < 0 || !shopIds.length || (parsedCost !== undefined && (!Number.isFinite(parsedCost) || parsedCost < 0))) return;
-     onSave({ id: event?.id ?? uid(), title: title.trim(), category, ...(deliveryMode ? { deliveryMode } : {}), duration: Number(duration), unit, ...(startDate ? { startDate } : {}), ...(parsedCost === undefined ? {} : { costUsd: parsedCost }), shopIds, roleIds: roleIds.filter(id => roles.some(role => role.id === id)), note: note || null, status, sortOrder: event?.sortOrder ?? project.training.length });
+     onSave({ id: event?.id ?? uid(), title: title.trim(), category, ...(deliveryMode ? { deliveryMode } : {}), ...(parsedTravel === undefined ? {} : { travelCostPerPersonKzt: parsedTravel }), duration: Number(duration), unit, ...(startDate ? { startDate } : {}), ...(parsedCost === undefined ? {} : { costUsd: parsedCost }), shopIds, roleIds: roleIds.filter(id => roles.some(role => role.id === id)), note: note || null, status, sortOrder: event?.sortOrder ?? project.training.length });
   };
   return <Modal title={event ? 'Изменить обучение' : 'Обучающее событие'} subtitle="Состав программы, продолжительность и целевая аудитория." onClose={onClose} wide>
     <form onSubmit={submit} className="space-y-4 p-6">
       <div className="grid gap-3 md:grid-cols-[1fr_180px]"><Field label="Название"><input className="control h-10 w-full px-3 text-sm" value={title} onChange={e => setTitle(e.target.value)} placeholder="Например, безопасная работа с оборудованием" required /></Field><Field label="Категория"><select className="control h-10 w-full px-2 text-xs" value={category} onChange={e => setCategory(e.target.value as TrainingEvent['category'])}>{Object.entries(categoryNames).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field></div>
       <Field label="Формат обучения"><select className="control h-10 w-full px-2 text-xs" value={deliveryMode} onChange={e => setDeliveryMode(e.target.value as TrainingEvent['deliveryMode'] | '')}><option value="">Формат не указан</option>{Object.entries(deliveryModeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+      {deliveryMode === 'offsite' && <Field label="Стоимость выезда на 1 человека, тенге"><input data-testid="input-training-travel-cost" type="number" min="0" step="1" className="control h-10 w-full px-3 text-sm" value={travelCost} onChange={e => setTravelCost(e.target.value)} placeholder="Не указана" /><p className="mt-1 text-[10px] text-[#85877e]">Добавляется к цене обучения: стоимость выезда × число участников, без округления людей до групп. Не включайте эти же расходы повторно в стоимость самого обучения. Для других форматов эта сумма не учитывается.</p></Field>}
                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Field label="Длительность"><input className="control h-10 w-full px-3 text-sm" type="number" min="0" step="any" required value={duration} onChange={e => setDuration(Number(e.target.value))} /></Field><Field label="Единица"><select className="control h-10 w-full px-2 text-xs" value={unit} onChange={e => setUnit(e.target.value as TrainingEvent['unit'])}><option value="days">Дни</option><option value="weeks">Недели</option><option value="months">Месяцы</option></select></Field><Field label="Статус"><select className="control h-10 w-full px-2 text-xs" value={status} onChange={e => setStatus(e.target.value as TrainingEvent['status'])}>{Object.entries(statusNames).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field><Field label={category === 'internship' ? 'Стоимость группы из 10 человек, тенге (необязательно)' : 'Стоимость события, тенге (необязательно)'}><input className="control h-10 w-full px-3 text-sm" type="number" min="0" step="1" value={costUsd} onChange={e => setCostUsd(e.target.value)} placeholder="Не указана" /></Field></div>
        {category === 'internship' && <p className="text-[9px] text-[#85877e]">Для сметы цена применяется к каждой группе из 10 участников; неполная последняя группа округляется вверх.</p>}
       <Field label="Начало обучения (необязательно)"><input data-testid="input-training-start-date" className="control h-10 w-full px-3 text-sm sm:max-w-[240px]" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /><p className="mt-1 text-[9px] text-[#85877e]">Если дата не задана, начало рассчитывается автоматически. Указанная дата задаёт начало этого события на таймлайне.</p></Field>

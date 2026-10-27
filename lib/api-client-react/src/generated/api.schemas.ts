@@ -130,6 +130,8 @@ export interface TrainingEvent {
   category: TrainingEventCategory;
   deliveryMode?: TrainingEventDeliveryMode;
   /** @minimum 0 */
+  travelCostPerPersonKzt?: number;
+  /** @minimum 0 */
   duration: number;
   unit: TrainingEventUnit;
   startDate?: string;
@@ -232,6 +234,43 @@ export const ProjectSettingsTemplateDataStatus = {
   confirmed: 'confirmed',
 } as const;
 
+export type ActualRecordKind = typeof ActualRecordKind[keyof typeof ActualRecordKind];
+
+
+export const ActualRecordKind = {
+  hire: 'hire',
+  training: 'training',
+  payroll: 'payroll',
+  training_cost: 'training_cost',
+} as const;
+
+export type ActualRecordDeliveryMode = typeof ActualRecordDeliveryMode[keyof typeof ActualRecordDeliveryMode];
+
+
+export const ActualRecordDeliveryMode = {
+  online: 'online',
+  atyrau: 'atyrau',
+  offsite: 'offsite',
+} as const;
+
+export interface ActualRecord {
+  id: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  date: string;
+  kind: ActualRecordKind;
+  shopId: string;
+  roleId?: string;
+  eventId?: string;
+  deliveryMode?: ActualRecordDeliveryMode;
+  /** @minimum 1 */
+  people?: number;
+  /** @exclusiveMinimum 0 */
+  days?: number;
+  /** @minimum 0 */
+  amountKzt?: number;
+  note?: string;
+}
+
 export interface AdditionalNonWorkingDate {
   date: string;
   /** @minLength 1 */
@@ -239,6 +278,7 @@ export interface AdditionalNonWorkingDate {
 }
 
 export interface ProjectSettings {
+  actualRecords?: ActualRecord[];
   calculationMode: ProjectSettingsCalculationMode;
   readyMode: ProjectSettingsReadyMode;
   /** @nullable */

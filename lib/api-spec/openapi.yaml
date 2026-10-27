@@ -218,6 +218,7 @@ components:
         title: { type: string }
         category: { type: string, enum: [mandatory, technology, internship, lvcc, other] }
         deliveryMode: { type: string, enum: [online, atyrau, offsite] }
+        travelCostPerPersonKzt: { type: number, minimum: 0 }
         duration: { type: number, minimum: 0 }
         unit: { type: string, enum: [days, weeks, months] }
         startDate: { type: string }
@@ -235,6 +236,9 @@ components:
       type: object
       required: [calculationMode, readyMode, readyDate, daysBeforeMc, dayType, contractDate]
       properties:
+        actualRecords:
+          type: array
+          items: { $ref: "#/components/schemas/ActualRecord" }
         calculationMode: { type: string, enum: [sequential, parallel] }
         readyMode: { type: string, enum: [fixed, relative] }
         readyDate: { type: ["string", "null"] }
@@ -279,6 +283,21 @@ components:
       properties:
         monthsBefore: { type: integer, minimum: 0 }
         milestone: { type: string, enum: [mc, rfsu] }
+    ActualRecord:
+      type: object
+      required: [id, date, kind, shopId]
+      properties:
+        id: { type: string }
+        date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        kind: { type: string, enum: [hire, training, payroll, training_cost] }
+        shopId: { type: string }
+        roleId: { type: string }
+        eventId: { type: string }
+        deliveryMode: { type: string, enum: [online, atyrau, offsite] }
+        people: { type: integer, minimum: 1 }
+        days: { type: number, exclusiveMinimum: 0 }
+        amountKzt: { type: number, minimum: 0 }
+        note: { type: string }
     Project:
       type: object
       required: [id, title, startDate, endDate, updatedAt, shops, phases, milestones, training, settings]

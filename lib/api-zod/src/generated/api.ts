@@ -42,9 +42,17 @@ export const createProjectBodyShopsItemRolesItemMonthlyPayrollKztMin = 0;
 
 export const createProjectBodyShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
 
+export const createProjectBodyTrainingItemTravelCostPerPersonKztMin = 0;
+
 export const createProjectBodyTrainingItemDurationMin = 0;
 
 export const createProjectBodyTrainingItemCostUsdMin = 0;
+
+export const createProjectBodySettingsActualRecordsItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+export const createProjectBodySettingsActualRecordsItemDaysExclusiveMin = 0;
+
+export const createProjectBodySettingsActualRecordsItemAmountKztMin = 0;
 
 export const createProjectBodySettingsDaysBeforeMcMin = 0;
 
@@ -111,6 +119,7 @@ export const CreateProjectBody = zod.object({
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "travelCostPerPersonKzt": zod.number().min(createProjectBodyTrainingItemTravelCostPerPersonKztMin).optional(),
   "duration": zod.number().min(createProjectBodyTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
@@ -122,6 +131,19 @@ export const CreateProjectBody = zod.object({
   "sortOrder": zod.number().int()
 })),
   "settings": zod.object({
+  "actualRecords": zod.array(zod.object({
+  "id": zod.string(),
+  "date": zod.string().regex(createProjectBodySettingsActualRecordsItemDateRegExp),
+  "kind": zod.enum(['hire', 'training', 'payroll', 'training_cost']),
+  "shopId": zod.string(),
+  "roleId": zod.string().optional(),
+  "eventId": zod.string().optional(),
+  "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "people": zod.number().int().min(1).optional(),
+  "days": zod.number().gt(createProjectBodySettingsActualRecordsItemDaysExclusiveMin).optional(),
+  "amountKzt": zod.number().min(createProjectBodySettingsActualRecordsItemAmountKztMin).optional(),
+  "note": zod.string().optional()
+})).optional(),
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),
@@ -162,9 +184,17 @@ export const createProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
 
 export const createProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
 
+export const createProjectResponseTrainingItemTravelCostPerPersonKztMin = 0;
+
 export const createProjectResponseTrainingItemDurationMin = 0;
 
 export const createProjectResponseTrainingItemCostUsdMin = 0;
+
+export const createProjectResponseSettingsActualRecordsItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+export const createProjectResponseSettingsActualRecordsItemDaysExclusiveMin = 0;
+
+export const createProjectResponseSettingsActualRecordsItemAmountKztMin = 0;
 
 export const createProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -233,6 +263,7 @@ export const CreateProjectResponse = zod.object({
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "travelCostPerPersonKzt": zod.number().min(createProjectResponseTrainingItemTravelCostPerPersonKztMin).optional(),
   "duration": zod.number().min(createProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
@@ -244,6 +275,19 @@ export const CreateProjectResponse = zod.object({
   "sortOrder": zod.number().int()
 })),
   "settings": zod.object({
+  "actualRecords": zod.array(zod.object({
+  "id": zod.string(),
+  "date": zod.string().regex(createProjectResponseSettingsActualRecordsItemDateRegExp),
+  "kind": zod.enum(['hire', 'training', 'payroll', 'training_cost']),
+  "shopId": zod.string(),
+  "roleId": zod.string().optional(),
+  "eventId": zod.string().optional(),
+  "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "people": zod.number().int().min(1).optional(),
+  "days": zod.number().gt(createProjectResponseSettingsActualRecordsItemDaysExclusiveMin).optional(),
+  "amountKzt": zod.number().min(createProjectResponseSettingsActualRecordsItemAmountKztMin).optional(),
+  "note": zod.string().optional()
+})).optional(),
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),
@@ -292,9 +336,17 @@ export const getProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
 
 export const getProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
 
+export const getProjectResponseTrainingItemTravelCostPerPersonKztMin = 0;
+
 export const getProjectResponseTrainingItemDurationMin = 0;
 
 export const getProjectResponseTrainingItemCostUsdMin = 0;
+
+export const getProjectResponseSettingsActualRecordsItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+export const getProjectResponseSettingsActualRecordsItemDaysExclusiveMin = 0;
+
+export const getProjectResponseSettingsActualRecordsItemAmountKztMin = 0;
 
 export const getProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -363,6 +415,7 @@ export const GetProjectResponse = zod.object({
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "travelCostPerPersonKzt": zod.number().min(getProjectResponseTrainingItemTravelCostPerPersonKztMin).optional(),
   "duration": zod.number().min(getProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
@@ -374,6 +427,19 @@ export const GetProjectResponse = zod.object({
   "sortOrder": zod.number().int()
 })),
   "settings": zod.object({
+  "actualRecords": zod.array(zod.object({
+  "id": zod.string(),
+  "date": zod.string().regex(getProjectResponseSettingsActualRecordsItemDateRegExp),
+  "kind": zod.enum(['hire', 'training', 'payroll', 'training_cost']),
+  "shopId": zod.string(),
+  "roleId": zod.string().optional(),
+  "eventId": zod.string().optional(),
+  "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "people": zod.number().int().min(1).optional(),
+  "days": zod.number().gt(getProjectResponseSettingsActualRecordsItemDaysExclusiveMin).optional(),
+  "amountKzt": zod.number().min(getProjectResponseSettingsActualRecordsItemAmountKztMin).optional(),
+  "note": zod.string().optional()
+})).optional(),
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),
@@ -422,9 +488,17 @@ export const updateProjectBodyShopsItemRolesItemMonthlyPayrollKztMin = 0;
 
 export const updateProjectBodyShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
 
+export const updateProjectBodyTrainingItemTravelCostPerPersonKztMin = 0;
+
 export const updateProjectBodyTrainingItemDurationMin = 0;
 
 export const updateProjectBodyTrainingItemCostUsdMin = 0;
+
+export const updateProjectBodySettingsActualRecordsItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+export const updateProjectBodySettingsActualRecordsItemDaysExclusiveMin = 0;
+
+export const updateProjectBodySettingsActualRecordsItemAmountKztMin = 0;
 
 export const updateProjectBodySettingsDaysBeforeMcMin = 0;
 
@@ -491,6 +565,7 @@ export const UpdateProjectBody = zod.object({
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "travelCostPerPersonKzt": zod.number().min(updateProjectBodyTrainingItemTravelCostPerPersonKztMin).optional(),
   "duration": zod.number().min(updateProjectBodyTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
@@ -502,6 +577,19 @@ export const UpdateProjectBody = zod.object({
   "sortOrder": zod.number().int()
 })),
   "settings": zod.object({
+  "actualRecords": zod.array(zod.object({
+  "id": zod.string(),
+  "date": zod.string().regex(updateProjectBodySettingsActualRecordsItemDateRegExp),
+  "kind": zod.enum(['hire', 'training', 'payroll', 'training_cost']),
+  "shopId": zod.string(),
+  "roleId": zod.string().optional(),
+  "eventId": zod.string().optional(),
+  "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "people": zod.number().int().min(1).optional(),
+  "days": zod.number().gt(updateProjectBodySettingsActualRecordsItemDaysExclusiveMin).optional(),
+  "amountKzt": zod.number().min(updateProjectBodySettingsActualRecordsItemAmountKztMin).optional(),
+  "note": zod.string().optional()
+})).optional(),
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),
@@ -542,9 +630,17 @@ export const updateProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
 
 export const updateProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
 
+export const updateProjectResponseTrainingItemTravelCostPerPersonKztMin = 0;
+
 export const updateProjectResponseTrainingItemDurationMin = 0;
 
 export const updateProjectResponseTrainingItemCostUsdMin = 0;
+
+export const updateProjectResponseSettingsActualRecordsItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+export const updateProjectResponseSettingsActualRecordsItemDaysExclusiveMin = 0;
+
+export const updateProjectResponseSettingsActualRecordsItemAmountKztMin = 0;
 
 export const updateProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -613,6 +709,7 @@ export const UpdateProjectResponse = zod.object({
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "travelCostPerPersonKzt": zod.number().min(updateProjectResponseTrainingItemTravelCostPerPersonKztMin).optional(),
   "duration": zod.number().min(updateProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
@@ -624,6 +721,19 @@ export const UpdateProjectResponse = zod.object({
   "sortOrder": zod.number().int()
 })),
   "settings": zod.object({
+  "actualRecords": zod.array(zod.object({
+  "id": zod.string(),
+  "date": zod.string().regex(updateProjectResponseSettingsActualRecordsItemDateRegExp),
+  "kind": zod.enum(['hire', 'training', 'payroll', 'training_cost']),
+  "shopId": zod.string(),
+  "roleId": zod.string().optional(),
+  "eventId": zod.string().optional(),
+  "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "people": zod.number().int().min(1).optional(),
+  "days": zod.number().gt(updateProjectResponseSettingsActualRecordsItemDaysExclusiveMin).optional(),
+  "amountKzt": zod.number().min(updateProjectResponseSettingsActualRecordsItemAmountKztMin).optional(),
+  "note": zod.string().optional()
+})).optional(),
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),
@@ -682,9 +792,17 @@ export const copyProjectResponseShopsItemRolesItemMonthlyPayrollKztMin = 0;
 
 export const copyProjectResponseShopsItemRolesItemMonthlyPayrollNoteMax = 4000;
 
+export const copyProjectResponseTrainingItemTravelCostPerPersonKztMin = 0;
+
 export const copyProjectResponseTrainingItemDurationMin = 0;
 
 export const copyProjectResponseTrainingItemCostUsdMin = 0;
+
+export const copyProjectResponseSettingsActualRecordsItemDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+export const copyProjectResponseSettingsActualRecordsItemDaysExclusiveMin = 0;
+
+export const copyProjectResponseSettingsActualRecordsItemAmountKztMin = 0;
 
 export const copyProjectResponseSettingsDaysBeforeMcMin = 0;
 
@@ -753,6 +871,7 @@ export const CopyProjectResponse = zod.object({
   "title": zod.string(),
   "category": zod.enum(['mandatory', 'technology', 'internship', 'lvcc', 'other']),
   "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "travelCostPerPersonKzt": zod.number().min(copyProjectResponseTrainingItemTravelCostPerPersonKztMin).optional(),
   "duration": zod.number().min(copyProjectResponseTrainingItemDurationMin),
   "unit": zod.enum(['days', 'weeks', 'months']),
   "startDate": zod.string().optional(),
@@ -764,6 +883,19 @@ export const CopyProjectResponse = zod.object({
   "sortOrder": zod.number().int()
 })),
   "settings": zod.object({
+  "actualRecords": zod.array(zod.object({
+  "id": zod.string(),
+  "date": zod.string().regex(copyProjectResponseSettingsActualRecordsItemDateRegExp),
+  "kind": zod.enum(['hire', 'training', 'payroll', 'training_cost']),
+  "shopId": zod.string(),
+  "roleId": zod.string().optional(),
+  "eventId": zod.string().optional(),
+  "deliveryMode": zod.enum(['online', 'atyrau', 'offsite']).optional(),
+  "people": zod.number().int().min(1).optional(),
+  "days": zod.number().gt(copyProjectResponseSettingsActualRecordsItemDaysExclusiveMin).optional(),
+  "amountKzt": zod.number().min(copyProjectResponseSettingsActualRecordsItemAmountKztMin).optional(),
+  "note": zod.string().optional()
+})).optional(),
   "calculationMode": zod.enum(['sequential', 'parallel']),
   "readyMode": zod.enum(['fixed', 'relative']),
   "readyDate": zod.string().nullable(),

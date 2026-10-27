@@ -16,6 +16,8 @@ export interface TrainingEvent {
   category: TrainingEventCategory;
   deliveryMode?: TrainingEventDeliveryMode;
   /** @minimum 0 */
+  travelCostPerPersonKzt?: number;
+  /** @minimum 0 */
   duration: number;
   unit: TrainingEventUnit;
   startDate?: string;

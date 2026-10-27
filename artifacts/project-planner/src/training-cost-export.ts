@@ -13,7 +13,7 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
   sheet.columns = [
     { width: 54 }, { width: 20 }, { width: 22 }, { width: 22 },
     { width: 36 }, { width: 22 }, { width: 18 }, { width: 18 },
-    { width: 18 }, { width: 70 }, { width: 24 },
+    { width: 18 }, { width: 70 }, { width: 24 }, { width: 24 }, { width: 18 }, { width: 24 },
   ];
   const title = report.kind === 'monthly'
     ? 'Затраты на обучение, в помесячном выражении'
@@ -33,12 +33,12 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
   sheet.getCell('B4').numFmt = '#,##0 [$₸-kk-KZ]';
   if (report.partial) {
     sheet.mergeCells('A5:J5');
-    sheet.getCell('A5').value = `Данные неполные. Не разнесено по датам: ${report.unallocatedEvents.length} событий, ${formatKzt(report.unallocatedCostKzt)}. Обучений без указанной стоимости: ${report.unpricedEvents.length}. Стажировок без участников: ${report.unassignedAudienceEvents.length}.`;
+    sheet.getCell('A5').value = `Данные неполные. Не разнесено по датам: ${report.unallocatedEvents.length} событий, ${formatKzt(report.unallocatedCostKzt)}. Обучений без полной стоимости, включая выезд: ${report.unpricedEvents.length}. Стажировок без участников: ${report.unassignedAudienceEvents.length}.`;
     sheet.getCell('A5').font = { italic: true, color: { argb: 'FF9A6830' } };
   }
 
   const headingRow = report.partial ? 7 : 6;
-  const headers = ['Обучение', 'Категория', 'Расчётная стоимость события, ₸', 'Сумма в выбранном периоде, ₸', 'Участники / группы', 'Цена группы из 10, ₸', 'Дней в периоде', 'Всего дней', 'Период', 'Источник и расчётное основание', 'Формат обучения'];
+  const headers = ['Обучение', 'Категория', 'Расчётная стоимость события с выездом, ₸', 'Сумма в выбранном периоде, ₸', 'Участники / группы', 'Цена группы из 10, ₸', 'Дней в периоде', 'Всего дней', 'Период', 'Источник и расчётное основание', 'Формат обучения', 'Выезд на 1 человека, ₸', 'Участников выезда', 'Выезд всего, ₸'];
   sheet.addRow([]);
   sheet.addRow(headers);
   const header = sheet.getRow(headingRow);
@@ -63,10 +63,15 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
       `${line.startDate} — ${line.endDate}`,
       line.event.note ?? '',
       trainingDeliveryLabel(line.event),
+      line.event.deliveryMode === 'offsite' ? line.event.travelCostPerPersonKzt ?? null : null,
+      line.event.deliveryMode === 'offsite' ? line.participantCount : null,
+      line.travelCostKzt,
     ]);
     row.getCell(3).numFmt = '#,##0 [$₸-kk-KZ]';
     row.getCell(4).numFmt = '#,##0 [$₸-kk-KZ]';
     row.getCell(6).numFmt = '#,##0 [$₸-kk-KZ]';
+    row.getCell(12).numFmt = '#,##0 [$₸-kk-KZ]';
+    row.getCell(14).numFmt = '#,##0 [$₸-kk-KZ]';
     row.alignment = { vertical: 'top', wrapText: true };
   }
   sheet.views = [{ state: 'frozen', ySplit: headingRow }];
@@ -82,7 +87,7 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
       unresolved.addRow([entry.event.title, entry.event.category, entry.totalCostKzt, 'Не определена дата обучения', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '', trainingDeliveryLabel(entry.event)]);
     }
     for (const entry of report.unpricedEvents) {
-      unresolved.addRow([entry.event.title, entry.event.category, null, 'Стоимость не указана', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '', trainingDeliveryLabel(entry.event)]);
+      unresolved.addRow([entry.event.title, entry.event.category, entry.totalCostKzt, entry.event.costUsd === undefined ? 'Цена самого обучения не указана' : 'Стоимость выезда на человека не указана', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '', trainingDeliveryLabel(entry.event)]);
     }
     for (const entry of report.unassignedAudienceEvents) {
       unresolved.addRow([entry.event.title, entry.event.category, entry.totalCostKzt, 'Не назначены участники стажировки', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '', trainingDeliveryLabel(entry.event)]);

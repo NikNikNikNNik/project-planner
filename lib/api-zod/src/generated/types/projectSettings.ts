@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ActualRecord } from './actualRecord';
 import type { AdditionalNonWorkingDate } from './additionalNonWorkingDate';
 import type { ProjectSettingsCalculationMode } from './projectSettingsCalculationMode';
 import type { ProjectSettingsDayType } from './projectSettingsDayType';
@@ -18,6 +19,7 @@ import type { ProjectSettingsStaffingMode } from './projectSettingsStaffingMode'
 import type { ProjectSettingsTemplateDataStatus } from './projectSettingsTemplateDataStatus';
 
 export interface ProjectSettings {
+  actualRecords?: ActualRecord[];
   calculationMode: ProjectSettingsCalculationMode;
   readyMode: ProjectSettingsReadyMode;
   /** @nullable */

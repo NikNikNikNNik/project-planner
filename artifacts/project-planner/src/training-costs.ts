@@ -16,6 +16,8 @@ export interface InternshipCostBasis {
 export interface TrainingCostEntry {
   event: TrainingEvent;
   totalCostKzt: number | null;
+  travelCostKzt: number;
+  participantCount: number;
   internshipCostBasis: InternshipCostBasis | null;
   unassignedAudience: boolean;
   startDate: string | null;
@@ -27,6 +29,8 @@ export interface TrainingCostEntry {
 export interface TrainingCostLine {
   event: TrainingEvent;
   totalCostKzt: number;
+  travelCostKzt: number;
+  participantCount: number;
   internshipCostBasis: InternshipCostBasis | null;
   amountKzt: number;
   activeDaysInPeriod: number;
@@ -102,11 +106,18 @@ export function getTrainingCostEntries(project: Project, schedule: ScheduledTrai
     const internshipCostBasis = event.category === 'internship'
       ? getInternshipCostBasis(project, event, enteredCostKzt)
       : null;
-    const totalCostKzt = internshipCostBasis
+    const tuitionCostKzt = internshipCostBasis
       ? enteredCostKzt === null
         ? null
         : enteredCostKzt * internshipCostBasis.groupCount
       : includedInCalculation ? enteredCostKzt : 0;
+    const participantCount = getInternshipCostBasis(project, event, null).participantCount;
+    const travelCostKzt = event.deliveryMode === 'offsite' && includedInCalculation
+      ? Math.round((event.travelCostPerPersonKzt ?? 0) * participantCount)
+      : 0;
+    const totalCostKzt = tuitionCostKzt === null
+      ? (travelCostKzt > 0 ? travelCostKzt : null)
+      : tuitionCostKzt + travelCostKzt;
     const startDate = includedInCalculation && isIsoDate(scheduled?.startDate)
       ? scheduled.startDate
       : includedInCalculation && isIsoDate(event.startDate) ? event.startDate : null;
@@ -135,6 +146,8 @@ export function getTrainingCostEntries(project: Project, schedule: ScheduledTrai
     return {
       event,
       totalCostKzt,
+      travelCostKzt,
+      participantCount,
       internshipCostBasis,
       unassignedAudience: Boolean(internshipCostBasis && internshipCostBasis.participantCount === 0 && totalCostKzt !== null && enteredCostKzt !== null && enteredCostKzt > 0),
       startDate,
@@ -151,7 +164,7 @@ function getInternshipCostBasis(project: Project, event: TrainingEvent, pricePer
     .flatMap(shop => shop.roles)
     .filter(role => event.roleIds.length === 0 || event.roleIds.includes(role.id))
     .reduce((sum, role) => {
-      const headcount = role.headcount ?? 0;
+      const headcount = role.headcount ?? 1;
       return role.visible !== false && Number.isFinite(headcount) && headcount > 0
         ? sum + Math.floor(headcount)
         : sum;
@@ -167,7 +180,8 @@ function getInternshipCostBasis(project: Project, event: TrainingEvent, pricePer
 export function getTrainingCostSummary(entries: TrainingCostEntry[]) {
   const unallocatedEvents = entries.filter(entry =>
     entry.totalCostKzt !== null && entry.totalCostKzt > 0 && entry.activeDates.length === 0);
-  const unpricedEvents = entries.filter(entry => entry.totalCostKzt === null);
+  const unpricedEvents = entries.filter(entry => entry.totalCostKzt === null || entry.event.costUsd === undefined
+    || (entry.event.deliveryMode === 'offsite' && entry.participantCount > 0 && entry.event.travelCostPerPersonKzt === undefined));
   return {
     totalCostKzt: entries.reduce((sum, entry) => sum + (entry.totalCostKzt ?? 0), 0),
     unallocatedEvents,
@@ -217,6 +231,8 @@ export function getTrainingCostReport(
     lines.push({
       event: entry.event,
       totalCostKzt: entry.totalCostKzt,
+      travelCostKzt: entry.travelCostKzt,
+      participantCount: entry.participantCount,
       internshipCostBasis: entry.internshipCostBasis,
       amountKzt,
       activeDaysInPeriod: activeIndices.length,

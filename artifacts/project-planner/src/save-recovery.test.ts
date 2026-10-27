@@ -18,6 +18,13 @@ test("save snapshots ignore only the server-generated updatedAt value", () => {
   );
 });
 
+test("nested object key order never makes a successful API save look unsaved", () => {
+  const editor = { id: 'p1', title: 'План', settings: { calculationMode: 'sequential', actualRecords: [{ id: 'a', date: '2026-10-27' }] }, training: [] };
+  const server = { training: [], settings: { actualRecords: [{ date: '2026-10-27', id: 'a' }], calculationMode: 'sequential' }, title: 'План', id: 'p1', updatedAt: '2026-10-27T12:00:00Z' };
+  assert.equal(serializeProjectSnapshot(editor), serializeProjectSnapshot(server));
+  assert.notEqual(serializeProjectSnapshot(editor), serializeProjectSnapshot({ ...server, settings: { ...server.settings, actualRecords: [] } }));
+});
+
 test("recovery is offered only when its server baseline still matches", () => {
   const snapshot = {
     version: 1 as const,
