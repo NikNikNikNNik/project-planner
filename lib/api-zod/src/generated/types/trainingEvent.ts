@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TrainingEventCategory } from './trainingEventCategory';
+import type { TrainingEventDeliveryMode } from './trainingEventDeliveryMode';
 import type { TrainingEventStatus } from './trainingEventStatus';
 import type { TrainingEventUnit } from './trainingEventUnit';
 
@@ -13,6 +14,7 @@ export interface TrainingEvent {
   id: string;
   title: string;
   category: TrainingEventCategory;
+  deliveryMode?: TrainingEventDeliveryMode;
   /** @minimum 0 */
   duration: number;
   unit: TrainingEventUnit;

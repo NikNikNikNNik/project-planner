@@ -1,6 +1,7 @@
 import type ExcelJS from 'exceljs';
 import type { TrainingCostReport } from './training-costs';
 import { formatKzt } from './payroll.ts';
+import { trainingDeliveryLabel } from './training-delivery.ts';
 
 export async function createTrainingCostWorkbook(report: TrainingCostReport) {
   const { default: ExcelJS } = await import('exceljs');
@@ -12,7 +13,7 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
   sheet.columns = [
     { width: 54 }, { width: 20 }, { width: 22 }, { width: 22 },
     { width: 36 }, { width: 22 }, { width: 18 }, { width: 18 },
-    { width: 18 }, { width: 70 },
+    { width: 18 }, { width: 70 }, { width: 24 },
   ];
   const title = report.kind === 'monthly'
     ? 'Затраты на обучение, в помесячном выражении'
@@ -37,7 +38,7 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
   }
 
   const headingRow = report.partial ? 7 : 6;
-  const headers = ['Обучение', 'Категория', 'Расчётная стоимость события, ₸', 'Сумма в выбранном периоде, ₸', 'Участники / группы', 'Цена группы из 10, ₸', 'Дней в периоде', 'Всего дней', 'Период', 'Источник и расчётное основание'];
+  const headers = ['Обучение', 'Категория', 'Расчётная стоимость события, ₸', 'Сумма в выбранном периоде, ₸', 'Участники / группы', 'Цена группы из 10, ₸', 'Дней в периоде', 'Всего дней', 'Период', 'Источник и расчётное основание', 'Формат обучения'];
   sheet.addRow([]);
   sheet.addRow(headers);
   const header = sheet.getRow(headingRow);
@@ -61,6 +62,7 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
       line.activeDaysTotal,
       `${line.startDate} — ${line.endDate}`,
       line.event.note ?? '',
+      trainingDeliveryLabel(line.event),
     ]);
     row.getCell(3).numFmt = '#,##0 [$₸-kk-KZ]';
     row.getCell(4).numFmt = '#,##0 [$₸-kk-KZ]';
@@ -72,18 +74,18 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
 
   if (report.unallocatedEvents.length || report.unpricedEvents.length || report.unassignedAudienceEvents.length) {
     const unresolved = workbook.addWorksheet('Без даты или стоимости');
-    unresolved.columns = [{ width: 54 }, { width: 20 }, { width: 22 }, { width: 26 }, { width: 22 }, { width: 80 }];
-    unresolved.addRow(['Обучение', 'Категория', 'Расчётная стоимость, ₸', 'Проблема', 'Цена группы из 10, ₸', 'Источник и расчётное основание']);
+    unresolved.columns = [{ width: 54 }, { width: 20 }, { width: 22 }, { width: 26 }, { width: 22 }, { width: 80 }, { width: 24 }];
+    unresolved.addRow(['Обучение', 'Категория', 'Расчётная стоимость, ₸', 'Проблема', 'Цена группы из 10, ₸', 'Источник и расчётное основание', 'Формат обучения']);
     unresolved.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     unresolved.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8B6C42' } };
     for (const entry of report.unallocatedEvents) {
-      unresolved.addRow([entry.event.title, entry.event.category, entry.totalCostKzt, 'Не определена дата обучения', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '']);
+      unresolved.addRow([entry.event.title, entry.event.category, entry.totalCostKzt, 'Не определена дата обучения', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '', trainingDeliveryLabel(entry.event)]);
     }
     for (const entry of report.unpricedEvents) {
-      unresolved.addRow([entry.event.title, entry.event.category, null, 'Стоимость не указана', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '']);
+      unresolved.addRow([entry.event.title, entry.event.category, null, 'Стоимость не указана', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '', trainingDeliveryLabel(entry.event)]);
     }
     for (const entry of report.unassignedAudienceEvents) {
-      unresolved.addRow([entry.event.title, entry.event.category, entry.totalCostKzt, 'Не назначены участники стажировки', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '']);
+      unresolved.addRow([entry.event.title, entry.event.category, entry.totalCostKzt, 'Не назначены участники стажировки', entry.internshipCostBasis?.pricePerGroupKzt ?? null, entry.event.note ?? '', trainingDeliveryLabel(entry.event)]);
     }
     for (const row of unresolved.getRows(2, unresolved.rowCount - 1) ?? []) {
       row.getCell(3).numFmt = '#,##0 [$₸-kk-KZ]';
@@ -91,7 +93,7 @@ export async function createTrainingCostWorkbook(report: TrainingCostReport) {
       row.alignment = { vertical: 'top', wrapText: true };
     }
     unresolved.views = [{ state: 'frozen', ySplit: 1 }];
-    unresolved.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 6 } };
+    unresolved.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
   }
 
   return workbook;

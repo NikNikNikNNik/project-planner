@@ -14,6 +14,7 @@ import {
 } from './training-costs';
 import { downloadTrainingCostWorkbook } from './training-cost-export';
 import { useObservedWidth } from './use-observed-width';
+import { trainingDeliveryLabel } from './training-delivery';
 
 const compact = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 });
 const shortDate = (date: string) => `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(2, 4)}`;
@@ -72,7 +73,7 @@ function TrainingCostDetailsPanel({ report }: { report: TrainingCostReport }) {
         </thead>
         <tbody>
           {report.lines.map((line, index) => <tr key={`${line.event.id}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-[#faf8f3]'}>
-            <td className="max-w-[300px] px-3 py-1.5 font-medium">{line.event.title}{line.approximate ? ' · ≈' : ''}</td>
+            <td className="max-w-[300px] px-3 py-1.5 font-medium">{line.event.title}{line.approximate ? ' · ≈' : ''}<div className="mt-1 text-[10px] font-semibold text-[#416a5d]">{trainingDeliveryLabel(line.event)}</div></td>
             <td className="px-3 py-1.5 text-[#59645c]">{line.event.category}</td>
             <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">{formatKzt(line.totalCostKzt)}</td>
             <td className="whitespace-nowrap px-3 py-1.5 text-right font-semibold tabular-nums">{formatKzt(line.amountKzt)}</td>

@@ -20,6 +20,7 @@ import {
 } from '@workspace/api-client-react';
 import { downloadRecruitmentWorkbook } from './recruitment-export';
 import { trainingNoteForDisplay } from './training-note-display';
+import { deliveryModeNames, trainingDeliveryLabel } from './training-delivery';
 import { PayrollMonthlyTimelineRow, PayrollTimelineRow } from './PayrollTimelineRow';
 import { PayrollRatesDisclosure } from './PayrollRatesDisclosure';
 import { TrainingCostTimelineRow } from './TrainingCostTimelineRow';
@@ -1349,7 +1350,7 @@ function Planner() {
                                   <button
                                     type="button"
                                     aria-label={`${item.event.title}: ${categoryNames[item.event.category]}, ${item.durationDays} дней`}
-                                    title={`${item.event.title} · ${categoryNames[item.event.category]} · ${item.durationDays} дн. · ${fmt(item.startDate)} — ${fmt(item.endDate)}`}
+                                    title={`${item.event.title} · ${trainingDeliveryLabel(item.event)} · ${categoryNames[item.event.category]} · ${item.durationDays} дн. · ${fmt(item.startDate)} — ${fmt(item.endDate)}`}
                                     className="absolute z-[3] flex h-[10px] min-w-[3px] items-center overflow-hidden rounded-[3px] px-1 text-left text-[8px] font-bold text-white shadow-sm outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#293640]"
                                     style={{ left: `${position(item.startDate)}%`, width: `${width(item.startDate, item.endDate)}%`, top: `${19 + item.lane * 12}px`, backgroundColor: trainingColors[item.event.category] }}
                                   >
@@ -1360,6 +1361,7 @@ function Planner() {
                                   <Tooltip.Content side="top" align="start" sideOffset={6} collisionPadding={12} className="z-[100] w-[320px] max-w-[88vw] rounded-lg border border-[#d9d4ca] bg-[#fbfaf5] p-3 text-[#293640] shadow-xl">
                                     <h4 className="text-[11px] font-extrabold">{item.event.title}</h4>
                                     <p className="mt-1 text-[9px] text-[#777b76]">{role.name} · {categoryNames[item.event.category]} · {statusNames[item.event.status]}</p>
+                                    <p className="mt-1 text-[10px] font-bold text-[#416a5d]">{trainingDeliveryLabel(item.event)}</p>
                                     <p className="mt-1 text-[9px] font-semibold">{item.event.duration} {item.event.unit === 'days' ? 'дн.' : item.event.unit === 'weeks' ? 'нед.' : 'мес.'} · {item.durationDays} дн. · {fmt(item.startDate)} — {fmt(item.endDate)}{item.event.costUsd !== undefined ? ` · бюджет: ${trainingCostDisplay(trainingCostEntryById.get(item.event.id))}` : ''}</p>
                                     {trainingNoteForDisplay(item.event.note) && <p className="mt-1 whitespace-pre-wrap text-[9px] text-[#777b76]">{trainingNoteForDisplay(item.event.note)}</p>}
                                     {item.approximate && <p className="mt-1 text-[9px] text-[#9a6830]">Дата рассчитана предварительно от начала проекта.</p>}
@@ -1406,7 +1408,7 @@ function Planner() {
                         return <div key={event.id} className="flex min-h-[38px] border-b border-[#ece8df] last:border-0">
                           <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#faf8f2] px-4" title={`${event.title} · ${categoryNames[event.category]}`}>
                             <div className="flex min-w-0 items-center gap-1.5"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: trainingColors[event.category] }} /><span className="truncate text-[9px] font-semibold text-[#4f5656]">{event.title}</span></div>
-                            <span className="ml-3.5 truncate text-[8px] text-[#8b897f]">{categoryNames[event.category]}</span>
+                            <span className="ml-3.5 text-[8px] text-[#8b897f]">{categoryNames[event.category]} · {trainingDeliveryLabel(event)}</span>
                           </div>
                           <div className="timeline-grid relative h-[38px] min-w-0 flex-1">
                             <Tooltip.Root delayDuration={220}>
@@ -1420,6 +1422,7 @@ function Planner() {
                                   <h3 className="mb-2 text-xs font-extrabold">{event.title}</h3>
                                   <dl className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] leading-relaxed">
                                     <dt className="text-[#81847c]">Категория</dt><dd className="font-semibold">{categoryNames[event.category]}</dd>
+                                    <dt className="text-[#81847c]">Формат</dt><dd className="font-semibold">{trainingDeliveryLabel(event)}</dd>
                                     <dt className="text-[#81847c]">Длительность</dt><dd>{event.duration} {unitName} · {item.durationDays} {projectDayType === 'working' ? 'рабочих' : 'календарных'} дней</dd>
                                     {event.unit !== 'days' && <><dt className="text-[#81847c]">Условный пересчёт</dt><dd>{event.unit === 'weeks' ? (projectDayType === 'working' ? '1 неделя = 5 рабочих дней' : '1 неделя = 7 календарных дней') : (projectDayType === 'working' ? '1 месяц = 22 рабочих дня' : '1 месяц = 30 календарных дней')}</dd></>}
                                     {event.costUsd !== undefined && <><dt className="text-[#81847c]">Расчётная стоимость</dt><dd>{trainingCostDisplay(costEntry)}</dd></>}
@@ -1467,7 +1470,7 @@ function Planner() {
                         </summary>
                         {events.length > 0 ? events.map((event, eventIndex) => <div key={event.id} className="flex items-center gap-2 border-t border-[#eee9df] px-4 py-2.5">
                           <span className={`h-2 w-2 shrink-0 rounded-full ${event.status === 'completed' ? 'bg-[#587c70]' : event.status === 'in_progress' ? 'bg-[#c58b3a]' : 'bg-[#8b7ba3]'}`} />
-                           <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, projectDayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}{event.startDate && <> · начало {fmt(event.startDate)}</>}{event.costUsd !== undefined && <> · {trainingCostDisplay(trainingCostEntryById.get(event.id))}</>}</div></button>
+                           <button onClick={() => { setEditingTraining(event); setModal('training'); }} className="min-w-0 flex-1 text-left"><div className="truncate text-[11px] font-bold">{event.title}</div><div className="mt-0.5 text-[10px] font-bold text-[#416a5d]">{trainingDeliveryLabel(event)}</div><div className="mt-0.5 text-[9px] text-[#82847b]">{event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, projectDayType)} дн. · {event.shopIds.length === project.shops.length ? 'все площадки' : `${event.shopIds.length} площадки`}{event.startDate && <> · начало {fmt(event.startDate)}</>}{event.costUsd !== undefined && <> · {trainingCostDisplay(trainingCostEntryById.get(event.id))}</>}</div></button>
                           <span className="hidden rounded-full bg-[#efede5] px-2 py-1 text-[9px] font-semibold text-[#707772] sm:inline-flex">{statusNames[event.status]}</span>
                           <IconButton label="Переместить выше" onClick={() => moveTraining(event.id, -1)}><ArrowLeft size={12} className="-rotate-90" /></IconButton>
                           <IconButton label="Переместить ниже" onClick={() => moveTraining(event.id, 1)}><ArrowRight size={12} className="rotate-90" /></IconButton>
@@ -2159,6 +2162,7 @@ function TrainingModal({ event, project, onClose, onSave, onDelete, presetScope 
   const dayType = getProjectDayType(project.settings);
   const [title, setTitle] = useState(event?.title ?? '');
   const [category, setCategory] = useState<TrainingEvent['category']>(event?.category ?? 'mandatory');
+  const [deliveryMode, setDeliveryMode] = useState<TrainingEvent['deliveryMode'] | ''>(event?.deliveryMode ?? '');
   const [duration, setDuration] = useState(event?.duration ?? 5);
   const [unit, setUnit] = useState<TrainingEvent['unit']>(event?.unit ?? 'days');
   const [startDate, setStartDate] = useState(event?.startDate ?? '');
@@ -2172,11 +2176,12 @@ function TrainingModal({ event, project, onClose, onSave, onDelete, presetScope 
     e.preventDefault();
     const parsedCost = costUsd.trim() === '' ? undefined : Number(costUsd);
     if (Number(duration) < 0 || !shopIds.length || (parsedCost !== undefined && (!Number.isFinite(parsedCost) || parsedCost < 0))) return;
-     onSave({ id: event?.id ?? uid(), title: title.trim(), category, duration: Number(duration), unit, ...(startDate ? { startDate } : {}), ...(parsedCost === undefined ? {} : { costUsd: parsedCost }), shopIds, roleIds: roleIds.filter(id => roles.some(role => role.id === id)), note: note || null, status, sortOrder: event?.sortOrder ?? project.training.length });
+     onSave({ id: event?.id ?? uid(), title: title.trim(), category, ...(deliveryMode ? { deliveryMode } : {}), duration: Number(duration), unit, ...(startDate ? { startDate } : {}), ...(parsedCost === undefined ? {} : { costUsd: parsedCost }), shopIds, roleIds: roleIds.filter(id => roles.some(role => role.id === id)), note: note || null, status, sortOrder: event?.sortOrder ?? project.training.length });
   };
   return <Modal title={event ? 'Изменить обучение' : 'Обучающее событие'} subtitle="Состав программы, продолжительность и целевая аудитория." onClose={onClose} wide>
     <form onSubmit={submit} className="space-y-4 p-6">
       <div className="grid gap-3 md:grid-cols-[1fr_180px]"><Field label="Название"><input className="control h-10 w-full px-3 text-sm" value={title} onChange={e => setTitle(e.target.value)} placeholder="Например, безопасная работа с оборудованием" required /></Field><Field label="Категория"><select className="control h-10 w-full px-2 text-xs" value={category} onChange={e => setCategory(e.target.value as TrainingEvent['category'])}>{Object.entries(categoryNames).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field></div>
+      <Field label="Формат обучения"><select className="control h-10 w-full px-2 text-xs" value={deliveryMode} onChange={e => setDeliveryMode(e.target.value as TrainingEvent['deliveryMode'] | '')}><option value="">Формат не указан</option>{Object.entries(deliveryModeNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Field label="Длительность"><input className="control h-10 w-full px-3 text-sm" type="number" min="0" step="any" required value={duration} onChange={e => setDuration(Number(e.target.value))} /></Field><Field label="Единица"><select className="control h-10 w-full px-2 text-xs" value={unit} onChange={e => setUnit(e.target.value as TrainingEvent['unit'])}><option value="days">Дни</option><option value="weeks">Недели</option><option value="months">Месяцы</option></select></Field><Field label="Статус"><select className="control h-10 w-full px-2 text-xs" value={status} onChange={e => setStatus(e.target.value as TrainingEvent['status'])}>{Object.entries(statusNames).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field><Field label={category === 'internship' ? 'Стоимость группы из 10 человек, тенге (необязательно)' : 'Стоимость события, тенге (необязательно)'}><input className="control h-10 w-full px-3 text-sm" type="number" min="0" step="1" value={costUsd} onChange={e => setCostUsd(e.target.value)} placeholder="Не указана" /></Field></div>
        {category === 'internship' && <p className="text-[9px] text-[#85877e]">Для сметы цена применяется к каждой группе из 10 участников; неполная последняя группа округляется вверх.</p>}
       <Field label="Начало обучения (необязательно)"><input data-testid="input-training-start-date" className="control h-10 w-full px-3 text-sm sm:max-w-[240px]" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /><p className="mt-1 text-[9px] text-[#85877e]">Если дата не задана, начало рассчитывается автоматически. Указанная дата задаёт начало этого события на таймлайне.</p></Field>
@@ -2272,6 +2277,7 @@ function RolesModal({ project, onClose, onSave, onAddTraining }: { project: Proj
                     {assignedTrainings.map(event => <li key={event.id} className="border-t border-[#e9e5dc] pt-2 first:border-0 first:pt-0">
                       <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-bold">{event.title}</span><span className="shrink-0 text-[9px] text-[#777b76]">{statusNames[event.status]}</span></div>
                        <p className="mt-0.5 text-[9px] text-[#777b76]">{categoryNames[event.category]} · {event.duration} {event.unit === 'days' ? 'дн.' : event.unit === 'weeks' ? 'нед.' : 'мес.'} · {trainingDays(event, dayType)} дн.{event.costUsd !== undefined ? ` · ${event.category === 'internship' ? `${formatKzt(event.costUsd)} за группу из 10 человек` : formatKzt(event.costUsd)}` : ''}</p>
+                      <p className="mt-1 text-[10px] font-bold text-[#416a5d]">{trainingDeliveryLabel(event)}</p>
                       {trainingNoteForDisplay(event.note) && <p className="mt-1 whitespace-pre-wrap text-[9px] leading-relaxed text-[#6d7470]">{trainingNoteForDisplay(event.note)}</p>}
                     </li>)}
                   </ul> : <p className="text-[10px] text-[#777b76]">Для этой роли пока не назначено обучение.</p>}

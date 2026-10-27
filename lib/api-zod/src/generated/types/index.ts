@@ -36,5 +36,6 @@ export * from './roleGroup';
 export * from './shop';
 export * from './trainingEvent';
 export * from './trainingEventCategory';
+export * from './trainingEventDeliveryMode';
 export * from './trainingEventStatus';
 export * from './trainingEventUnit';

@@ -97,6 +97,15 @@ export const TrainingEventCategory = {
   other: 'other',
 } as const;
 
+export type TrainingEventDeliveryMode = typeof TrainingEventDeliveryMode[keyof typeof TrainingEventDeliveryMode];
+
+
+export const TrainingEventDeliveryMode = {
+  online: 'online',
+  atyrau: 'atyrau',
+  offsite: 'offsite',
+} as const;
+
 export type TrainingEventUnit = typeof TrainingEventUnit[keyof typeof TrainingEventUnit];
 
 
@@ -119,6 +128,7 @@ export interface TrainingEvent {
   id: string;
   title: string;
   category: TrainingEventCategory;
+  deliveryMode?: TrainingEventDeliveryMode;
   /** @minimum 0 */
   duration: number;
   unit: TrainingEventUnit;

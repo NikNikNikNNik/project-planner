@@ -217,6 +217,7 @@ components:
         id: { type: string }
         title: { type: string }
         category: { type: string, enum: [mandatory, technology, internship, lvcc, other] }
+        deliveryMode: { type: string, enum: [online, atyrau, offsite] }
         duration: { type: number, minimum: 0 }
         unit: { type: string, enum: [days, weeks, months] }
         startDate: { type: string }
