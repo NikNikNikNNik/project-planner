@@ -7,6 +7,8 @@
  */
 
 export * from './additionalNonWorkingDate';
+export * from './appCredentials';
+export * from './appSession';
 export * from './healthStatus';
 export * from './milestone';
 export * from './milestoneShopDates';

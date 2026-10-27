@@ -41,7 +41,9 @@ test("projects are created without access credentials", () => {
   assert.doesNotMatch(route.body, /credentials|access|password|username/i);
 });
 
-test("project routes do not require authentication", () => {
+test("project routes use one application gate, not per-project credentials", () => {
+  const index = readFileSync(new URL("./routes/index.ts", import.meta.url), "utf8");
+  assert.match(index, /router\.use\(auth\.requireAuth, projectsRouter\)/);
   for (const route of routes) {
     assert.doesNotMatch(route.body, /requestHasProjectAccess|AuthenticateProjectBody|CopyProjectBody/);
   }

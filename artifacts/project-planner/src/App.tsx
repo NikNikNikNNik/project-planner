@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { AuthGate, isUnauthorized, notifyAuthRequired, useAppAuth } from './auth';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   useCopyProject,
@@ -68,11 +69,17 @@ import {
 import {
   Activity, AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, Check, Download, FileSpreadsheet,
   ChevronDown, ChevronRight, CircleHelp, Copy, Factory, Flag,
-  Pencil, Plus, Save, Settings2, SlidersHorizontal, Upload,
+  LogOut, Pencil, Plus, Save, Settings2, SlidersHorizontal, Upload,
   Trash2, Users, ZoomIn, ZoomOut,
 } from 'lucide-react';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: notifyAuthRequired }),
+  mutationCache: new MutationCache({ onError: notifyAuthRequired }),
+  defaultOptions: {
+    queries: { retry: (attempt, error) => !isUnauthorized(error) && attempt < 2 },
+  },
+});
 const fmt = (date?: string | null) => date ? new Date(`${date.slice(0, 10)}T00:00:00`).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Не задано';
 const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const shiftDate = (value: string, days: number) => { const d = new Date(`${value}T12:00:00`); d.setDate(d.getDate() + days); return iso(d); };
@@ -275,6 +282,7 @@ function Modal({ title, subtitle, onClose, children, wide = false, extraWide = f
 }
 
 function Planner() {
+  const auth = useAppAuth();
   const qc = useQueryClient();
   const projectsQuery = useListProjects();
   const summaryQuery = useGetPlanningSummary();
@@ -982,6 +990,13 @@ function Planner() {
           </div>
           {project && <button onClick={retrySave} disabled={updateMutation.isPending} className="control inline-flex h-9 items-center gap-1.5 px-2.5 text-xs font-bold text-[#56645e] disabled:opacity-50"><Save size={13} />{saveState === 'error' ? 'Повторить' : 'Сохранить'}</button>}
           <button data-testid="button-new-project" onClick={openNewProject} className="btn-primary inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold"><Plus size={15} />Новый проект</button>
+          <button type="button" disabled={auth.busy} onClick={() => {
+            if (saveState !== 'saved') {
+              notify('Сначала сохраните изменения или дождитесь окончания сохранения.');
+              return;
+            }
+            void auth.logout().catch(() => notify('Не удалось выйти. Проверьте соединение и повторите попытку.'));
+          }} className="control inline-flex h-9 items-center gap-1.5 px-2.5 text-xs font-bold disabled:opacity-50"><LogOut size={14} />Выйти</button>
         </div>
       </header>
       {saveState === 'error' && <div role="alert" className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#e5b9ad] bg-[#f8eae5] px-4 py-3 text-xs text-[#813a2a] md:mx-8">
@@ -2343,7 +2358,7 @@ function SettingsModal({ project, onClose, onSave }: { project: Project; onClose
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><Tooltip.Provider delayDuration={250}><Planner /></Tooltip.Provider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><AuthGate onLogout={() => queryClient.clear()} onResume={() => { void queryClient.invalidateQueries(); }}><Tooltip.Provider delayDuration={250}><Planner /></Tooltip.Provider></AuthGate></QueryClientProvider>;
 }
 
 export default App;
