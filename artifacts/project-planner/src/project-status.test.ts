@@ -100,3 +100,45 @@ test('record validation and backups retain confirmed facts and travel fields', (
   assert.ok(validateActualRecord(p, { ...p.settings.actualRecords![1], people: 0 }).length);
   assert.ok(validateActualRecord(p, { ...p.settings.actualRecords![1], days: NaN }).length);
 });
+
+test('future project shows whole plan even when all date-specific metrics are zero', () => {
+  const p = fixture();
+  p.settings.actualRecords = [];
+  const report = getStatusReport(p, '2025-12-01');
+  assert.ok(report.rows.every(r => r.plan === 0 && r.fact === 0 && !r.hasFact));
+  assert.equal(metric(report, 'hire').totalPlan, 3);
+  assert.equal(metric(report, 'offsite').totalPlan, 6);
+  assert.equal(metric(report, 'training_cost').totalPlan, 450);
+  assert.equal(metric(report, 'payroll').totalPlan, 108900);
+  assert.equal(report.firstPlannedDate, '2026-01-10');
+  for (const row of report.rows) {
+    assert.equal(row.totalPlan, report.shops.reduce((sum, s) => sum + s.rows.find(r => r.key === row.key)!.totalPlan, 0));
+  }
+});
+
+test('whole plan follows scope and project edits but not report date', () => {
+  const p = fixture();
+  const early = getStatusReport(p, '2025-12-01');
+  const late = getStatusReport(p, '2026-12-31');
+  assert.deepEqual(early.rows.map(r => r.totalPlan), late.rows.map(r => r.totalPlan));
+  p.shops[0].includedInCalculations = false;
+  p.shops[1].roles[0].headcount = 4;
+  p.training[0].duration = 3;
+  p.training[0].costUsd = 600;
+  const updated = getStatusReport(p, '2025-12-01');
+  assert.equal(metric(updated, 'hire').totalPlan, 4);
+  assert.equal(metric(updated, 'offsite').totalPlan, 12);
+  assert.equal(metric(updated, 'training_cost').totalPlan, 800);
+});
+
+test('a missing fact differs from a confirmed zero expense and future records are excluded', () => {
+  const p = fixture();
+  p.settings.actualRecords = [{ id: 'zero', kind: 'payroll', shopId: 's0', date: '2026-01-10', amountKzt: 0 }];
+  const report = getStatusReport(p, '2026-01-10');
+  assert.equal(metric(report, 'payroll').hasFact, true);
+  assert.equal(metric(report, 'payroll').fact, 0);
+  assert.equal(metric(report, 'hire').hasFact, false);
+  assert.equal(report.shops[0].rows.find(r => r.key === 'payroll')!.hasFact, true);
+  assert.equal(report.shops[1].rows.find(r => r.key === 'payroll')!.hasFact, false);
+  assert.equal(metric(getStatusReport(p, '2026-01-09'), 'payroll').hasFact, false);
+});

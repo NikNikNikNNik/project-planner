@@ -15,8 +15,14 @@ const definitions = [
   ['training_cost', 'Освоено бюджета на обучение', '₸'],
 ] as const;
 export interface StatusRow {
-  key: string; label: string; unit: string; plan: number; fact: number;
+  key: string; label: string; unit: string; totalPlan: number; plan: number; fact: number; hasFact: boolean;
   delta: number; percent: number | null; deltaPercent: number | null;
+}
+export interface StatusReport {
+  rows: StatusRow[];
+  shops: { shopId: string; shopName: string; rows: StatusRow[] }[];
+  firstPlannedDate: string | null;
+  warnings: string[];
 }
 export function isRealDate(date: string) {
   const parsed = new Date(`${date}T00:00:00Z`);
@@ -46,10 +52,10 @@ export function validateActualRecord(project: Project, record: ActualRecord): st
   return errors;
 }
 const empty = () => Object.fromEntries(definitions.map(([key]) => [key, 0])) as Record<string, number>;
-function rows(plan: Record<string, number>, fact: Record<string, number>): StatusRow[] {
+function rows(plan: Record<string, number>, fact: Record<string, number>, totalPlan: Record<string, number>, recorded: Set<string>): StatusRow[] {
   return definitions.map(([key, label, unit]) => {
     const p = Math.round(plan[key] * 100) / 100, f = Math.round(fact[key] * 100) / 100;
-    return { key, label, unit, plan: p, fact: f, delta: Math.round((f - p) * 100) / 100,
+    return { key, label, unit, totalPlan: Math.round(totalPlan[key] * 100) / 100, plan: p, fact: f, hasFact: recorded.has(key), delta: Math.round((f - p) * 100) / 100,
       percent: p === 0 ? null : f / p * 100, deltaPercent: p === 0 ? null : (f - p) / p * 100 };
   });
 }
@@ -66,23 +72,30 @@ function elapsedDays(start: string, end: string, through: string, project: Proje
   }
   return count;
 }
-export function getStatusReport(project: Project, date: string) {
+export function getStatusReport(project: Project, date: string): StatusReport {
   const warnings = new Set<string>();
-  if (!isRealDate(date)) return { rows: rows(empty(), empty()), shops: [], warnings: ['Укажите корректную отчётную дату.'] };
+  let firstPlannedDate: string | null = null;
+  const trackDate = (value: string | null) => {
+    if (value && isRealDate(value) && (!firstPlannedDate || value < firstPlannedDate)) firstPlannedDate = value;
+  };
+  if (!isRealDate(date)) return { rows: rows(empty(), empty(), empty(), new Set()), shops: [], firstPlannedDate, warnings: ['Укажите корректную отчётную дату.'] };
   const shops = project.shops.filter(isShopIncludedInCalculation).map(shop => ({
-    shopId: shop.id, shopName: shop.name, plan: empty(), fact: empty(),
+    shopId: shop.id, shopName: shop.name, plan: empty(), totalPlan: empty(), fact: empty(), recorded: new Set<string>(),
   }));
-  const totals = empty(), facts = empty();
+  const totals = empty(), fullPlan = empty(), facts = empty(), recorded = new Set<string>();
   const audience = new Map<string, Map<string, number>>();
   for (const target of shops) {
     const shop = project.shops.find(s => s.id === target.shopId)!;
     const payroll = getProjectPayroll({ ...project, shops: [shop] });
     target.plan.payroll = getCumulativePayrollKzt(payroll.entries, date);
+    target.totalPlan.payroll = getCumulativePayrollKzt(payroll.entries, project.endDate);
     if (payroll.partial) warnings.add('ФОТ рассчитан не полностью: для части персонала нет ставки или даты контракта.');
     for (const role of shop.roles.filter(r => r.visible !== false)) {
       const people = role.headcount ?? 1;
       if (people <= 0) continue;
       const plan = getRoleTrainingPlan(project, shop.id, role.id, getShopReadyDate(project, shop.id));
+      target.totalPlan.hire += people;
+      trackDate(plan.contractDate);
       if (plan.contractDate && plan.contractDate <= date) target.plan.hire += people;
       if (!plan.contractDate) warnings.add('Для части профессий не определена дата контракта.');
       for (const event of plan.events) {
@@ -93,8 +106,12 @@ export function getStatusReport(project: Project, date: string) {
         if (event.duration <= 0) warnings.add('Есть обучения без длительности: их плановые человеко-дни не рассчитаны.');
       }
       for (const item of plan.schedule) {
+        trackDate(item.startDate);
         if (item.approximate) warnings.add('Часть сроков обучения рассчитана предварительно.');
-        if (item.event.deliveryMode) target.plan[item.event.deliveryMode] += people * elapsedDays(item.startDate, item.endDate, date, project);
+        if (item.event.deliveryMode) {
+          target.totalPlan[item.event.deliveryMode] += people * item.durationDays;
+          target.plan[item.event.deliveryMode] += people * elapsedDays(item.startDate, item.endDate, date, project);
+        }
       }
     }
   }
@@ -105,6 +122,13 @@ export function getStatusReport(project: Project, date: string) {
   if (costReport.partial || summary.unpricedEvents.length) warnings.add('Бюджет обучения неполный: есть события без цены, даты или участников.');
   // Shared event costs are apportioned to shops by planned participating headcount,
   // including group rounding for internships already applied in the event total.
+  for (const entry of entries) {
+    trackDate(entry.startDate);
+    const counts = audience.get(entry.event.id);
+    const count = [...(counts?.values() ?? [])].reduce((a, b) => a + b, 0);
+    if (!count) continue;
+    for (const target of shops) target.totalPlan.training_cost += (entry.totalCostKzt ?? 0) * (counts?.get(target.shopId) ?? 0) / count;
+  }
   for (const line of costReport.lines) {
     const counts = audience.get(line.event.id);
     const count = [...(counts?.values() ?? [])].reduce((a, b) => a + b, 0);
@@ -120,12 +144,14 @@ export function getStatusReport(project: Project, date: string) {
     const target = shops.find(s => s.shopId === record.shopId);
     const role = project.shops.find(s => s.id === record.shopId)?.roles.find(r => r.id === record.roleId);
     if (!target || role?.visible === false) continue;
+    target.recorded.add(record.kind === 'training' ? record.deliveryMode! : record.kind);
     if (record.kind === 'hire') target.fact.hire += record.people!;
     if (record.kind === 'training') target.fact[record.deliveryMode!] += record.people! * record.days!;
     if (record.kind === 'payroll' || record.kind === 'training_cost') target.fact[record.kind] += record.amountKzt!;
   }
   for (const target of shops) for (const [key] of definitions) {
-    totals[key] += target.plan[key]; facts[key] += target.fact[key];
+    totals[key] += target.plan[key]; fullPlan[key] += target.totalPlan[key]; facts[key] += target.fact[key];
+    if (target.recorded.has(key)) recorded.add(key);
   }
-  return { rows: rows(totals, facts), shops: shops.map(s => ({ shopId: s.shopId, shopName: s.shopName, rows: rows(s.plan, s.fact) })), warnings: [...warnings] };
+  return { rows: rows(totals, facts, fullPlan, recorded), shops: shops.map(s => ({ shopId: s.shopId, shopName: s.shopName, rows: rows(s.plan, s.fact, s.totalPlan, s.recorded) })), firstPlannedDate, warnings: [...warnings] };
 }
