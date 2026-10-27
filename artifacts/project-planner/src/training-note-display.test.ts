@@ -28,3 +28,13 @@ test('all training information popovers filter notes, not the editable note fiel
   assert.doesNotMatch(app, /\{(?:item\.)?event\.note\}<\/p>/);
   assert.match(app, /value=\{note\} onChange=\{e => setNote\(e\.target\.value\)\}/);
 });
+
+test('hides the historical ten-year shift without changing stored dates or other caveats', () => {
+  const note = 'ПРЕДВАРИТЕЛЬНО. Источники: План 2018. Календарные даты сдвинуты на +10 лет: 2028-01-01, 2028-10-01. Если источник указал только месяц, день 01 — условный. Аудитория: операторы.';
+  assert.equal(trainingNoteForDisplay(note),
+    'ПРЕДВАРИТЕЛЬНО. Если источник указал только месяц, день 01 — условный. Аудитория: операторы.');
+  assert.ok(note.includes('Календарные даты сдвинуты на +10 лет: 2028-01-01'));
+  assert.equal(trainingNoteForDisplay('Календарные даты сдвинуты на +10 лет: 2028-01-01.'), '');
+  assert.equal(trainingNoteForDisplay('Календарные даты сдвинуты на 10 лет: 2028-01-01\r\nСтоимость предварительная.'), 'Стоимость предварительная.');
+  assert.equal(trainingNoteForDisplay('Обучение: 10 лет опыта. Начало: 2028-01-01.'), 'Обучение: 10 лет опыта. Начало: 2028-01-01.');
+});
