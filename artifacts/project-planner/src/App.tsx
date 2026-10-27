@@ -1296,8 +1296,8 @@ function Planner() {
                           const onboardingLeft = onboardingStartDate ? position(onboardingStartDate) : 0;
                           const onboardingWidth = onboardingStartDate && rolePlan.startDate ? width(onboardingStartDate, rolePlan.startDate) : 0;
                           return <div key={role.id} className={`flex min-h-[52px] border-t border-[#ece8df] ${roleIncluded ? 'bg-[#fdfcf8]' : 'bg-[#f4f2eb]'}`}>
-                            <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fdfcf8] pl-10 pr-3">
-                              <label className="flex min-w-0 cursor-pointer items-center gap-1.5">
+                            <div className="sticky left-0 z-[5] flex w-[184px] shrink-0 flex-col justify-center bg-[#fdfcf8] py-2 pl-10 pr-3">
+                              <label className="flex min-w-0 cursor-pointer items-start gap-1.5">
                                 <input
                                   type="checkbox"
                                   data-testid={`role-calculation-toggle-${shop.id}-${role.id}`}
@@ -1305,9 +1305,9 @@ function Planner() {
                                   checked={role.visible !== false}
                                   onPointerDown={event => event.stopPropagation()}
                                   onChange={event => setRoleCalculationIncluded(shop.id, role.id, event.target.checked)}
-                                  className="accent-[#bd4c2b]"
+                                  className="mt-0.5 shrink-0 accent-[#bd4c2b]"
                                 />
-                                <span className="truncate text-[9px] font-semibold text-[#4f5b58]" title={`${role.name} · ${shop.name}`}>{role.name}</span>
+                                <span className="min-w-0 flex-1 whitespace-normal break-words text-[9px] font-semibold leading-snug text-[#4f5b58]" title={`${role.name} · ${shop.name}`}>{role.name}</span>
                               </label>
                               <span data-testid={`timeline-headcount-${role.id}`} className="mt-0.5 text-[10px] font-extrabold tabular-nums text-[#416350]" title={`Плановая численность роли «${role.name}»; ФОТ = месячная ставка на человека × ${role.headcount ?? 1}`}>
                                 {role.headcount ?? 1} чел.
