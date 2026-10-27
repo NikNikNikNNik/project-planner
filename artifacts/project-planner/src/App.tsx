@@ -1318,7 +1318,7 @@ function Planner() {
                                   : shopIncluded ? 'Не участвует в расчёте' : 'Цех исключён из расчёта'}
                               </span>
                             </div>
-                            <div className="timeline-grid relative min-w-0 flex-1" style={{ height: `${roleTimelineHeight}px` }}>
+                            <div className="timeline-grid relative min-w-0 flex-1" style={{ minHeight: `${roleTimelineHeight}px` }}>
                               {roleIncluded && rolePlan.hasTrainingBar && onboardingStartDate && rolePlan.startDate && <Tooltip.Root delayDuration={220}>
                                 <Tooltip.Trigger asChild>
                                   <button
